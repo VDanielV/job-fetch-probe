@@ -1,16 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Implements Application's interfaces with real HTTP, files and JSON. -->
-  <PropertyGroup>
-    <RootNamespace>JobFetchProbe.Infrastructure</RootNamespace>
-  </PropertyGroup>
-
+  <!-- Talks to the outside world: HTTP (via IHttpClientFactory), saved files and JSON output. -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Http" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\JobFetchProbe.Application\JobFetchProbe.Application.csproj" />
+    <ProjectReference Include="..\JobFetchProbe.Services\JobFetchProbe.Services.csproj" />
   </ItemGroup>
 
 </Project>

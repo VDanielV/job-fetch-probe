@@ -1,106 +1,89 @@
 # JobFetchProbe
 
-Local academic probe for the question in [`docs/plan.md`](docs/plan.md): can a plain .NET client, with ordinary HTTPS and no access-control bypass, retrieve a usable JobSeekerPortal job description?
+A .NET console app: give it a link to a job posting, or a page you saved from your browser. It prints the job's title, company, location, date, details and description, and saves them as `output/<JobId>.json`.
 
-The app reads `robots.txt`, extracts a job from a local HTML file, and can send one anonymous GET of one job URL. A block, challenge or auth wall ends the live phase. There is no second method.
-
-## Build and test
+## Run
 
 ```sh
-dotnet build
-dotnet test          # offline; no test touches the network
+dotnet run --project src/JobFetchProbe.Console
 ```
-
-## Commands
-
-```sh
-dotnet run --project src/JobFetchProbe.Console -- policy
-dotnet run --project src/JobFetchProbe.Console -- extract --html fixtures/sample-job.html
-dotnet run --project src/JobFetchProbe.Console -- fetch --url https://www.JobSeekerPortal.com/jobs/view/<id>/ --live
-```
-
-Shared flags: `--out <dir>` (default `out`), `--timeout-seconds <5-30>` (default 15).
-
-| Exit | Meaning |
-| --- | --- |
-| 0 | Finished and wrote a report |
-| 2 | Invalid arguments (no report, no request) |
-| 3 | Stopped on a block, challenge, auth wall or disallow. Report written |
-| 4 | Transport failure or timeout. Report written |
-
-Every run overwrites `out/probe-report.json` and appends one line to `out/probe-log.jsonl`. `fetch` copies the two policy booleans from the latest `policy` line in that log, so run `policy` first.
-
-## Operating rules (from [the plan](docs/plan.md))
-
-1. Run `policy`. Read the result. If job paths are disallowed, decide whether phase 2 still adds information. `fetch` needs `--live` regardless.
-2. `fetch` accepts one `https://www.JobSeekerPortal.com/jobs/view/...` URL. Search pages, guest endpoints, `start=` and `currentJobId` are rejected. The query string and fragment are dropped before sending.
-3. Do not rerun `fetch` on the same URL to get a different outcome.
-4. Write `out/lab-note.md` by hand. Delete any browser-saved HTML and the `out/` directory when the note is done.
-
-## What the client does and does not do
-
-- User-Agent `JobFetchProbe/0.1 (academic exercise; unattended-contact: none)`. Accept `text/plain` for policy, `text/html` for fetch.
-- No cookies (`UseCookies = false`), no `Authorization`, no proxy configuration, no retry handler, one attempt.
-- Redirects are walked by hand, at most 3, only within `https://*.JobSeekerPortal.com`. A redirect to `/login`, `/uas/login`, `/authwall` or `/checkpoint` is recorded and **not followed**.
-- The response body stays in memory. The report holds status, content type, body length, final host, redirect hops (status and host only), class and reason. No body, headers or URL path.
-
-## Classes
-
-First match wins: `Error` (transport/status 0) → `Denied` (401, 403, 429, 999) → `AuthWall` (final URL path) → `Challenge` (visible text has "security verification" or "captcha") → `EmptyShell` (200, visible text < 400 chars) → `DescriptionPresent` (200, ≥ 400 chars, `h1` present) → `Error` (anything else, including a 200 with enough text but no `h1`).
-
-`DescriptionPresent` means the response looks like a document. It does not mean the fixture extractor ran on JobSeekerPortal markup.
-
-## Extractors
-
-`extract` uses `FixtureJobExtractor`, which reads only the `data-probe` / `data-field` contract used by `fixtures/sample-job.html`. A browser-saved page will fail with a clear error. `--extractor saved` exits 2 with `saved extractor is not part of this build`; [the spec](docs/spec.md) leaves that extractor for later, behind `IJobExtractor`, with a golden test kept outside the repo.
-
-## Documents
-
-- [`docs/plan.md`](docs/plan.md): question, hypothesis, phases, stop rules.
-- [`docs/spec.md`](docs/spec.md): software spec this build implements.
-
-## Architecture
-
-Four projects, Clean Architecture style. Dependencies point inward only.
 
 ```text
-Console ──► Application ──► Domain
-   │              ▲
-   └──► Infrastructure (implements Application's interfaces)
+Paste a job link, or the path of a page you saved from your browser. Type 'exit' to quit.
+
+Job link or file: C:\Code\job-fetch-probe\out\job-4478111194.saved.html
+Job ID:    4478111194
+Title:     Técnico/a de Desarrollo
+Company:   Improving Logistics & Consulting S.L.
+Location:  Almussafes
+...
+Saved to C:\Code\job-fetch-probe\output\4478111194.json
 ```
 
-| Project | Role | Contents |
+You can also pass one link or file directly: `dotnet run --project src/JobFetchProbe.Console -- <job-link-or-file>`.
+
+### Saved pages
+
+Sites such as LinkedIn often refuse plain requests. When that happens, open the job in your browser (a private window shows what an anonymous visitor gets), save it, and give the app the file path instead of the link. Both a normal "Save page as" file and a Chrome **view-source** save (Ctrl+U, then Ctrl+S) work. Save them in `out/` or name them `*.saved.html` so Git ignores them.
+
+## Configuration
+
+`src/JobFetchProbe.Console/appsettings.json`:
+
+| Setting | Default | Meaning |
 | --- | --- | --- |
-| `JobFetchProbe.Domain` | Models and pure rules. References nothing | `Models/` (`JobPosting`, `RobotsPolicy`, `FetchClassification`, ...), `Rules/` (`RobotsPolicyParser`, `ResponseClassifier`, `HtmlText`, `JobUrlRules`) |
-| `JobFetchProbe.Application` | Use cases and the contracts they need. References Domain only | `Abstractions/` (`IPageFetcher`, `IJobExtractor`, `IReportWriter`), `Dtos/` (`ProbeReport`, `FetchResult`, ...), `Services/` (`PolicyService`, `ExtractService`, `FetchService`), `Results/` |
-| `JobFetchProbe.Infrastructure` | Real HTTP, file and JSON implementations | `Http/HttpPageFetcher`, `Extraction/FixtureJobExtractor`, `Reporting/JsonReportWriter`, `DependencyInjection` |
-| `JobFetchProbe.Console` | Composition root and CLI. No business logic | `Program`, `ProbeApp` (DI wiring), `Cli/` (`ProbeOptions`, `ExitCodes`) |
+| `Output:Folder` | `output` | Where `<JobId>.json` files go. Relative paths start from the folder you run the app in |
+| `HttpClient:TimeoutSeconds` | `20` | Request timeout |
+| `HttpClient:UserAgent` | `JobFetchProbe/0.3 (personal study project)` | How the app identifies itself |
+| `HttpClient:HandlerLifetimeMinutes` | `5` | How long the client factory reuses a connection handler before rotating it |
 
-Each project has a matching test project under `tests/`:
+Any setting can be overridden with an environment variable, using `__` for `:`, e.g. `Output__Folder=D:\jobs`.
 
-| Test project | What it covers |
-| --- | --- |
-| `JobFetchProbe.Domain.Tests` | robots.txt parsing, every classifier class, URL rules, posting field rules |
-| `JobFetchProbe.Application.Tests` | The three services against in-memory fakes, including "report holds no body or path" |
-| `JobFetchProbe.Infrastructure.Tests` | Fixture extractor, JSON report writer, and the real `HttpPageFetcher` against a stub handler (identity headers, no cookies, redirect rules, no retry) |
-| `JobFetchProbe.Console.Tests` | Argument rules and end-to-end runs through the real composition root, including "fetch without --live builds no services" |
+## Output
 
-Build settings are shared in `Directory.Build.props`; package versions are managed centrally in `Directory.Packages.props`.
+One file per job, named after the job ID (the number at the end of the `/jobs/view/` link, or of the page's canonical link for saved files). Reading the same job again overwrites its file. If no ID can be found, the name is `job-<date>-<time>`.
 
-## Lab note template
+```json
+{
+  "jobId": "4478111194",
+  "sourceUrl": "https://es.linkedin.com/jobs/view/...-4478111194",
+  "title": "Técnico/a de Desarrollo",
+  "company": "Improving Logistics & Consulting S.L.",
+  "location": "Almussafes",
+  "posted": "Hace 23 horas",
+  "employmentType": null,
+  "details": [ { "label": "Tipo de empleo", "value": "Jornada completa" } ],
+  "description": "...",
+  "parsedFrom": "LinkedIn public job page markup",
+  "retrievedAt": "2026-10-14T13:12:20+00:00"
+}
+```
 
-Create `out/lab-note.md` by hand after the run:
+## Structure
 
 ```text
-Question:
-Hypothesis:
-Date:
-
-Phase 0 result:
-Phase 1 result:
-Phase 2 ran: yes/no
-Phase 2 class:
-
-One-sentence answer:
-Raw HTML deleted: yes/no
+Console ──► Services ──► Models
+   │            ▲
+   └──► Infrastructure (implements the Services interfaces)
 ```
+
+| Project | Role | Main files |
+| --- | --- | --- |
+| `JobFetchProbe.Models` | Data shapes shared by all layers. No dependencies | `JobPosting`, `JobDetail`, `FetchedPage`, `JobResult` |
+| `JobFetchProbe.Services` | Business logic and the interfaces it needs | `JobService`, `Parsing/JobPageParser`, `Parsing/JobIdResolver`, `Abstractions/IPageFetcher`, `ISavedPageReader`, `IJobRepository` |
+| `JobFetchProbe.Infrastructure` | HTTP, files and JSON output | `Http/HttpPageFetcher` (typed client from `IHttpClientFactory`), `Files/SavedPageReader`, `Storage/JsonJobRepository`, settings classes, `DependencyInjection` |
+| `JobFetchProbe.Console` | Entry point: configuration, dependency injection, prompt | `Program`, `JobConsole`, `appsettings.json` |
+
+### HTTP client
+
+The client is a **typed client** registered with `AddHttpClient<IPageFetcher, HttpPageFetcher>()`. `IHttpClientFactory` creates the `HttpClient` instances and pools the underlying connection handlers, rotating them every `HandlerLifetimeMinutes`. This avoids the two classic problems of `new HttpClient()`: running out of sockets when clients are created and disposed often, and stale DNS when one client lives forever. `HttpPageFetcher` never creates or disposes an `HttpClient`, and `IJobService` is transient and resolved in a new scope for each request, so no long-lived object pins a handler.
+
+The client sends no cookies and makes one attempt. If the site refuses the request (401, 403, 429, 999) or redirects to a sign-in page, the app says so and stops; it does not retry or try to get around the block.
+
+### Page layouts
+
+`JobPageParser` tries three layouts in order: schema.org `JobPosting` data embedded for search engines; LinkedIn's public job page (`topcard__title`, `topcard__org-name-link`, `description__job-criteria-*`, `show-more-less-html__markup`); then the page title and visible text. The LinkedIn class names come from one saved public job page (October 2026). If LinkedIn changes its markup, the app falls back to the generic layout; check a fresh saved page and update the class names.
+
+## Archive
+
+The earlier probe version (crawler-policy check, tests, plan and spec) is in [`archive/probe-v1`](archive/probe-v1). It is not part of the build.

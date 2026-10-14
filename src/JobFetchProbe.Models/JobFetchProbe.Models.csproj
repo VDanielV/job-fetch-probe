@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Plain data shapes shared by all layers. No dependencies. -->
+
+</Project>

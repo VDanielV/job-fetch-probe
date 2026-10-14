@@ -1,19 +1,22 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Presentation: parses arguments, wires dependency injection, prints one line, returns an exit code. No business logic. -->
+  <!-- Entry point: reads configuration, wires dependency injection, talks to the user. No business logic. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <AssemblyName>job-fetch-probe</AssemblyName>
-    <RootNamespace>JobFetchProbe.Console</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\JobFetchProbe.Application\JobFetchProbe.Application.csproj" />
+    <ProjectReference Include="..\JobFetchProbe.Services\JobFetchProbe.Services.csproj" />
     <ProjectReference Include="..\JobFetchProbe.Infrastructure\JobFetchProbe.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

@@ -14,7 +14,7 @@ public sealed record ProbeOptions
         usage:
           job-fetch-probe policy
           job-fetch-probe extract --html <path> [--extractor fixture]
-          job-fetch-probe fetch --url <https://www.linkedin.com/jobs/view/...> --live
+          job-fetch-probe fetch --url <https://www.jobseekerportal.com/jobs/view/...> --live
 
         shared flags:
           --out <dir>               report directory (default: out)

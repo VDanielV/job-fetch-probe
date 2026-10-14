@@ -1,35 +1,50 @@
 using System.Net;
-using JobFetchProbe.Application.Abstractions;
-using JobFetchProbe.Infrastructure.Extraction;
+using JobFetchProbe.Infrastructure.Files;
 using JobFetchProbe.Infrastructure.Http;
-using JobFetchProbe.Infrastructure.Reporting;
+using JobFetchProbe.Infrastructure.Storage;
+using JobFetchProbe.Services.Abstractions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace JobFetchProbe.Infrastructure;
 
 public static class DependencyInjection
 {
-    /// <summary>
-    /// Registers the real implementations of Application's interfaces.
-    /// One typed HttpClient, no retry or resilience handler, no cookies, no proxy configuration.
-    /// </summary>
-    public static IServiceCollection AddInfrastructure(this IServiceCollection services, InfrastructureOptions options)
+    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
-        options.Validate();
-        services.AddSingleton(options);
+        services.AddOptions<HttpClientSettings>()
+            .Bind(configuration.GetSection(HttpClientSettings.SectionName))
+            .Validate(s => s.TimeoutSeconds is > 0 and <= 120, "HttpClient:TimeoutSeconds must be 1-120")
+            .Validate(s => !string.IsNullOrWhiteSpace(s.UserAgent), "HttpClient:UserAgent is required");
 
-        services
-            .AddHttpClient<IPageFetcher, HttpPageFetcher>(client =>
-                client.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds))
+        services.AddOptions<OutputSettings>()
+            .Bind(configuration.GetSection(OutputSettings.SectionName))
+            .Validate(s => !string.IsNullOrWhiteSpace(s.Folder), "Output:Folder is required");
+
+        // Typed client through IHttpClientFactory. The factory owns and pools the message handlers,
+        // so HttpClient instances are cheap, never need disposing, and do not leak sockets.
+        var lifetime = TimeSpan.FromMinutes(
+            configuration.GetSection(HttpClientSettings.SectionName).Get<HttpClientSettings>()?.HandlerLifetimeMinutes ?? 5);
+
+        services.AddHttpClient<IPageFetcher, HttpPageFetcher>((sp, client) =>
+            {
+                var s = sp.GetRequiredService<IOptions<HttpClientSettings>>().Value;
+                client.Timeout = TimeSpan.FromSeconds(s.TimeoutSeconds);
+                client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", s.UserAgent);
+                client.DefaultRequestHeaders.Accept.ParseAdd("text/html");
+            })
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
             {
-                AllowAutoRedirect = false, // redirects are walked by hand so every hop is recorded
                 UseCookies = false,
-                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Brotli,
-            });
+                AllowAutoRedirect = true,
+                MaxAutomaticRedirections = 5,
+                AutomaticDecompression = DecompressionMethods.All,
+            })
+            .SetHandlerLifetime(lifetime);
 
-        services.AddSingleton<IJobExtractor, FixtureJobExtractor>();
-        services.AddSingleton<IReportWriter, JsonReportWriter>();
+        services.AddSingleton<ISavedPageReader, SavedPageReader>();
+        services.AddSingleton<IJobRepository, JsonJobRepository>();
         return services;
     }
 }
