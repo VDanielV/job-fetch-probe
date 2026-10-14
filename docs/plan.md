@@ -1,4 +1,4 @@
-# Plan: does a plain .NET client retrieve a LinkedIn job description?
+# Plan: does a plain .NET client retrieve a JobSeekerPortal job description?
 
 Academic exercise. Local only. One operator, one machine. The result is a lab note, not a job collector.
 
@@ -6,7 +6,7 @@ Date: 14 Oct 2026.
 
 ## Question
 
-Can a small .NET console app, using ordinary HTTPS and no access-control bypass, retrieve a usable LinkedIn job description?
+Can a small .NET console app, using ordinary HTTPS and no access-control bypass, retrieve a usable JobSeekerPortal job description?
 
 ## Pre-registered hypothesis
 
@@ -14,7 +14,7 @@ A plain client will not produce a usable description.
 
 Expected observations, in order:
 
-1. `robots.txt` disallows a general client, and disallows job-search and guest-job paths for the clients LinkedIn names.
+1. `robots.txt` disallows a general client, and disallows job-search and guest-job paths for the clients JobSeekerPortal names.
 2. A single anonymous GET of a job URL returns a non-page result: auth wall, checkpoint, HTTP 999, 401, 403, 429, or an HTML shell without the description.
 3. A parser can still extract title, company, location, and description from an HTML file saved earlier by hand. That result proves the parser. It does not prove live collection.
 
@@ -26,7 +26,7 @@ Three phases, each with a written result.
 
 | Phase | Proves | Live requests |
 | --- | --- | --- |
-| 0. Policy read | What LinkedIn publishes for automated access | 1 GET of `robots.txt` |
+| 0. Policy read | What JobSeekerPortal publishes for automated access | 1 GET of `robots.txt` |
 | 1. Parser on a local file | Whether extraction code works | None |
 | 2. One live probe | What one anonymous GET actually returns | 1 GET, only with an explicit flag |
 
@@ -36,7 +36,7 @@ The app identifies itself. It does not log in. It does not read browser cookies.
 
 A block ends the live phase. The lab note then says the plain client does not work. There is no second method inside this exercise.
 
-LinkedIn's User Agreement and crawling terms prohibit unauthorized automated copying. This plan does not clear that. The exercise stays small so the observation is a test, not a collector: two live requests maximum per run, no scheduler, no search pagination, no account actions.
+JobSeekerPortal's User Agreement and crawling terms prohibit unauthorized automated copying. This plan does not clear that. The exercise stays small so the observation is a test, not a collector: two live requests maximum per run, no scheduler, no search pagination, no account actions.
 
 ## Pass and fail
 

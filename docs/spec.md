@@ -6,7 +6,7 @@ The implementation must follow `plan.md`. This spec defines the software. It doe
 
 ## Goals
 
-- Record what `https://www.linkedin.com/robots.txt` says about a general client and about job paths.
+- Record what `https://www.JobSeekerPortal.com/robots.txt` says about a general client and about job paths.
 - Extract a fixed set of fields from local HTML.
 - Optionally fetch one operator-supplied job URL and classify the response.
 - Leave a JSON report on disk. Leave no secrets and no live page body after the run.
@@ -71,9 +71,9 @@ job-fetch-probe fetch --url <https-url> --live
 
 | Command | Required input | Network |
 | --- | --- | --- |
-| `policy` | None | GET `https://www.linkedin.com/robots.txt` |
+| `policy` | None | GET `https://www.JobSeekerPortal.com/robots.txt` |
 | `extract` | Existing local HTML file | None |
-| `fetch` | Absolute `https://www.linkedin.com/...` URL and `--live` | One GET |
+| `fetch` | Absolute `https://www.JobSeekerPortal.com/...` URL and `--live` | One GET |
 
 Shared flags:
 
@@ -108,7 +108,7 @@ The client must not copy headers from a browser capture.
 
 ## Phase 0: policy
 
-Request `https://www.linkedin.com/robots.txt`.
+Request `https://www.JobSeekerPortal.com/robots.txt`.
 
 Parse the body as a `robots.txt` group list. A group starts at `User-agent` and owns the following `Allow` and `Disallow` lines until the next `User-agent`.
 
@@ -128,7 +128,7 @@ Matching for that boolean is literal prefix matching of `Disallow` values agains
 
 If `User-agent: *` has `Disallow: /`, the boolean is true.
 
-The parser is tested against `fixtures/robots-sample.txt`, a shortened file with invented groups plus a `*` group that disallows `/` and a named-bot group that disallows `/jobs-guest/`. Tests must not download LinkedIn.
+The parser is tested against `fixtures/robots-sample.txt`, a shortened file with invented groups plus a `*` group that disallows `/` and a named-bot group that disallows `/jobs-guest/`. Tests must not download JobSeekerPortal.
 
 ## Phase 1: extract
 
@@ -177,7 +177,7 @@ The saved-page extractor, when added later, must:
 - Drop lines that look like email addresses or phone numbers instead of storing them
 - Be tested with a golden file kept outside the repo
 
-The spec does not fix selectors for LinkedIn's markup. Those belong in the lab note after looking at the saved file.
+The spec does not fix selectors for JobSeekerPortal's markup. Those belong in the lab note after looking at the saved file.
 
 ## Phase 2: one live fetch
 
@@ -186,7 +186,7 @@ The spec does not fix selectors for LinkedIn's markup. Those belong in the lab n
 URL rules:
 
 - HTTPS only
-- Host is `www.linkedin.com`
+- Host is `www.JobSeekerPortal.com`
 - Path is a single job view the operator already opened. Reject paths containing `/search`, `/jobs-guest`, `start=`, or a query key `currentJobId` used to walk a result list
 - No credentials in the URL
 
@@ -212,7 +212,7 @@ Visible text is the HTML with `script`, `style`, and tags removed, then whitespa
 
 Tests use in-memory strings for each class. They do not call the network.
 
-`DescriptionPresent` in this phase means the response looks like a document. It does not mean the fixture extractor ran against LinkedIn markup.
+`DescriptionPresent` in this phase means the response looks like a document. It does not mean the fixture extractor ran against JobSeekerPortal markup.
 
 ## Report
 
@@ -226,7 +226,7 @@ Write `out/probe-report.json` pretty-printed. Overwrite the file each run. Also 
   "finishedAt": "2026-10-14T11:06:01Z",
   "liveRequestSent": true,
   "httpStatus": 999,
-  "finalUrlHost": "www.linkedin.com",
+  "finalUrlHost": "www.JobSeekerPortal.com",
   "classification": "Denied",
   "visibleTextLength": 0,
   "policy": {
