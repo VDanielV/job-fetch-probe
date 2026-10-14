@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\JobFetchProbe.Domain\JobFetchProbe.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\fixtures\robots-sample.txt" Link="fixtures\robots-sample.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

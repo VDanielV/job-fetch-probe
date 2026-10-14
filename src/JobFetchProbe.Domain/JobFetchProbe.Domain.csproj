@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Core models and pure rules. References nothing: no packages, no other projects. -->
+  <PropertyGroup>
+    <RootNamespace>JobFetchProbe.Domain</RootNamespace>
+  </PropertyGroup>
+
+</Project>

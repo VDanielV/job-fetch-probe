@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\JobFetchProbe.Infrastructure\JobFetchProbe.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <!-- Committed synthetic fixtures only. Saved real pages never go here. -->
+  <ItemGroup>
+    <None Include="..\..\fixtures\sample-job.html" Link="fixtures\sample-job.html" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\JobFetchProbe.Console\JobFetchProbe.Console.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\fixtures\sample-job.html" Link="fixtures\sample-job.html" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\fixtures\robots-sample.txt" Link="fixtures\robots-sample.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

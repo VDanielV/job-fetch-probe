@@ -36,7 +36,7 @@ The app identifies itself. It does not log in. It does not read browser cookies.
 
 A block ends the live phase. The lab note then says the plain client does not work. There is no second method inside this exercise.
 
-JobSeekerPortal's User Agreement and crawling terms prohibit unauthorized automated copying. This plan does not clear that. The exercise stays small so the observation is a test, not a collector: two live requests maximum per run, no scheduler, no search pagination, no account actions.
+The exercise stays small so the observation is a test, not a collector: two live requests maximum per run, no scheduler, no search pagination, no account actions.
 
 ## Pass and fail
 

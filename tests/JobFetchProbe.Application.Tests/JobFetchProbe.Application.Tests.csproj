@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\JobFetchProbe.Application\JobFetchProbe.Application.csproj" />
+  </ItemGroup>
+
+</Project>

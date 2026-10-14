@@ -14,9 +14,9 @@ dotnet test          # offline; no test touches the network
 ## Commands
 
 ```sh
-dotnet run --project src/JobFetchProbe -- policy
-dotnet run --project src/JobFetchProbe -- extract --html fixtures/sample-job.html
-dotnet run --project src/JobFetchProbe -- fetch --url https://www.JobSeekerPortal.com/jobs/view/<id>/ --live
+dotnet run --project src/JobFetchProbe.Console -- policy
+dotnet run --project src/JobFetchProbe.Console -- extract --html fixtures/sample-job.html
+dotnet run --project src/JobFetchProbe.Console -- fetch --url https://www.JobSeekerPortal.com/jobs/view/<id>/ --live
 ```
 
 Shared flags: `--out <dir>` (default `out`), `--timeout-seconds <5-30>` (default 15).
@@ -59,9 +59,33 @@ First match wins: `Error` (transport/status 0) → `Denied` (401, 403, 429, 999)
 - [`docs/plan.md`](docs/plan.md): question, hypothesis, phases, stop rules.
 - [`docs/spec.md`](docs/spec.md): software spec this build implements.
 
-## Notes on the layout
+## Architecture
 
-The layout follows [`docs/spec.md`](docs/spec.md). Two small additions: `Policy/RobotsPolicyParser.cs` holds the pure parser that `RobotsPolicyParserTests` exercises, and `tests/` has `ProbeOptionsTests.cs` (URL and flag rules) and `ProbeRunnerTests.cs` (end-to-end runs against an in-memory fetcher, including "fetch without --live creates no client").
+Four projects, Clean Architecture style. Dependencies point inward only.
+
+```text
+Console ──► Application ──► Domain
+   │              ▲
+   └──► Infrastructure (implements Application's interfaces)
+```
+
+| Project | Role | Contents |
+| --- | --- | --- |
+| `JobFetchProbe.Domain` | Models and pure rules. References nothing | `Models/` (`JobPosting`, `RobotsPolicy`, `FetchClassification`, ...), `Rules/` (`RobotsPolicyParser`, `ResponseClassifier`, `HtmlText`, `JobUrlRules`) |
+| `JobFetchProbe.Application` | Use cases and the contracts they need. References Domain only | `Abstractions/` (`IPageFetcher`, `IJobExtractor`, `IReportWriter`), `Dtos/` (`ProbeReport`, `FetchResult`, ...), `Services/` (`PolicyService`, `ExtractService`, `FetchService`), `Results/` |
+| `JobFetchProbe.Infrastructure` | Real HTTP, file and JSON implementations | `Http/HttpPageFetcher`, `Extraction/FixtureJobExtractor`, `Reporting/JsonReportWriter`, `DependencyInjection` |
+| `JobFetchProbe.Console` | Composition root and CLI. No business logic | `Program`, `ProbeApp` (DI wiring), `Cli/` (`ProbeOptions`, `ExitCodes`) |
+
+Each project has a matching test project under `tests/`:
+
+| Test project | What it covers |
+| --- | --- |
+| `JobFetchProbe.Domain.Tests` | robots.txt parsing, every classifier class, URL rules, posting field rules |
+| `JobFetchProbe.Application.Tests` | The three services against in-memory fakes, including "report holds no body or path" |
+| `JobFetchProbe.Infrastructure.Tests` | Fixture extractor, JSON report writer, and the real `HttpPageFetcher` against a stub handler (identity headers, no cookies, redirect rules, no retry) |
+| `JobFetchProbe.Console.Tests` | Argument rules and end-to-end runs through the real composition root, including "fetch without --live builds no services" |
+
+Build settings are shared in `Directory.Build.props`; package versions are managed centrally in `Directory.Packages.props`.
 
 ## Lab note template
 
