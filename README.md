@@ -1,6 +1,6 @@
 # JobFetchProbe
 
-Local academic probe for the question in [`docs/plan.md`](docs/plan.md): can a plain .NET client, with ordinary HTTPS and no access-control bypass, retrieve a usable LinkedIn job description?
+Local academic probe for the question in [`docs/plan.md`](docs/plan.md): can a plain .NET client, with ordinary HTTPS and no access-control bypass, retrieve a usable JobSeekerPortal job description?
 
 The app reads `robots.txt`, extracts a job from a local HTML file, and can send one anonymous GET of one job URL. A block, challenge or auth wall ends the live phase. There is no second method.
 
@@ -16,7 +16,7 @@ dotnet test          # offline; no test touches the network
 ```sh
 dotnet run --project src/JobFetchProbe -- policy
 dotnet run --project src/JobFetchProbe -- extract --html fixtures/sample-job.html
-dotnet run --project src/JobFetchProbe -- fetch --url https://www.linkedin.com/jobs/view/<id>/ --live
+dotnet run --project src/JobFetchProbe -- fetch --url https://www.JobSeekerPortal.com/jobs/view/<id>/ --live
 ```
 
 Shared flags: `--out <dir>` (default `out`), `--timeout-seconds <5-30>` (default 15).
@@ -33,7 +33,7 @@ Every run overwrites `out/probe-report.json` and appends one line to `out/probe-
 ## Operating rules (from [the plan](docs/plan.md))
 
 1. Run `policy`. Read the result. If job paths are disallowed, decide whether phase 2 still adds information. `fetch` needs `--live` regardless.
-2. `fetch` accepts one `https://www.linkedin.com/jobs/view/...` URL. Search pages, guest endpoints, `start=` and `currentJobId` are rejected. The query string and fragment are dropped before sending.
+2. `fetch` accepts one `https://www.JobSeekerPortal.com/jobs/view/...` URL. Search pages, guest endpoints, `start=` and `currentJobId` are rejected. The query string and fragment are dropped before sending.
 3. Do not rerun `fetch` on the same URL to get a different outcome.
 4. Write `out/lab-note.md` by hand. Delete any browser-saved HTML and the `out/` directory when the note is done.
 
@@ -41,14 +41,14 @@ Every run overwrites `out/probe-report.json` and appends one line to `out/probe-
 
 - User-Agent `JobFetchProbe/0.1 (academic exercise; unattended-contact: none)`. Accept `text/plain` for policy, `text/html` for fetch.
 - No cookies (`UseCookies = false`), no `Authorization`, no proxy configuration, no retry handler, one attempt.
-- Redirects are walked by hand, at most 3, only within `https://*.linkedin.com`. A redirect to `/login`, `/uas/login`, `/authwall` or `/checkpoint` is recorded and **not followed**.
+- Redirects are walked by hand, at most 3, only within `https://*.JobSeekerPortal.com`. A redirect to `/login`, `/uas/login`, `/authwall` or `/checkpoint` is recorded and **not followed**.
 - The response body stays in memory. The report holds status, content type, body length, final host, redirect hops (status and host only), class and reason. No body, headers or URL path.
 
 ## Classes
 
 First match wins: `Error` (transport/status 0) → `Denied` (401, 403, 429, 999) → `AuthWall` (final URL path) → `Challenge` (visible text has "security verification" or "captcha") → `EmptyShell` (200, visible text < 400 chars) → `DescriptionPresent` (200, ≥ 400 chars, `h1` present) → `Error` (anything else, including a 200 with enough text but no `h1`).
 
-`DescriptionPresent` means the response looks like a document. It does not mean the fixture extractor ran on LinkedIn markup.
+`DescriptionPresent` means the response looks like a document. It does not mean the fixture extractor ran on JobSeekerPortal markup.
 
 ## Extractors
 
