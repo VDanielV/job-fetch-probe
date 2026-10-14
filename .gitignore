@@ -1,0 +1,6 @@
+out/
+*.saved.html
+bin/
+obj/
+.vs/
+*.user

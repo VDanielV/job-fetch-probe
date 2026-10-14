@@ -1,0 +1,16 @@
+# Invented sample for parser tests. Shortened; not LinkedIn's file.
+
+User-agent: ExampleSearchBot
+Disallow: /jobs-guest/
+Disallow: /job-apply/
+Allow: /jobs/view/
+
+User-agent: OtherBot
+User-agent: ThirdBot
+Crawl-delay: 5
+Disallow: /private/
+
+User-agent: *
+Disallow: /
+
+Sitemap: https://example.invalid/sitemap.xml
