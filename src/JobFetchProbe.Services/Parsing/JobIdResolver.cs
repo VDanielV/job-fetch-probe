@@ -22,6 +22,14 @@ public static partial class JobIdResolver
         return m.Success ? m.Groups[1].Value : null;
     }
 
+    /// <summary>The page's own address from its canonical link or og:url, if it is an absolute http(s) URL.</summary>
+    public static Uri? CanonicalUri(string html) =>
+        CanonicalUrl(html) is { } url &&
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
+        (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp)
+            ? uri
+            : null;
+
     public static string? CanonicalUrl(string html)
     {
         var m = Canonical().Match(html);

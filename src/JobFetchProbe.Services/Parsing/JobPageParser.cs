@@ -13,13 +13,19 @@ namespace JobFetchProbe.Services.Parsing;
 /// </summary>
 public sealed partial class JobPageParser : IJobPageParser
 {
-    public JobPosting Parse(string html) => FromJsonLd(html) ?? FromLinkedInGuest(html) ?? FromMarkup(html);
+    public JobPosting Parse(string html, string jobId, Uri sourceUrl)
+    {
+        return
+            FromLinkedInGuest(html, jobId, sourceUrl) ??
+            FromJsonLd(html, jobId, sourceUrl) ?? 
+            FromMarkup(html, jobId, sourceUrl);
+    }
 
     /// <summary>
     /// LinkedIn guest job page. Class names taken from a saved copy of a public job page (October 2026);
     /// LinkedIn can change them at any time, in which case this returns null and the generic fallback runs.
     /// </summary>
-    private static JobPosting? FromLinkedInGuest(string html)
+    private static JobPosting? FromLinkedInGuest(string html, string jobId, Uri sourceUrl)
     {
         var title = ElementText(html, "h1", "topcard__title");
         if (title is null)
@@ -47,6 +53,8 @@ public sealed partial class JobPageParser : IJobPageParser
 
         return new JobPosting
         {
+            JobId = jobId,
+            SourceUrl = sourceUrl,
             Title = title,
             Company = ElementText(html, "a", "topcard__org-name-link"),
             Location = LinkedInLocation().Match(html) is { Success: true } loc ? HtmlToText(loc.Groups[1].Value) : null,
@@ -72,7 +80,7 @@ public sealed partial class JobPageParser : IJobPageParser
         return text.Length > 0 ? text : null;
     }
 
-    private static JobPosting? FromJsonLd(string html)
+    private static JobPosting? FromJsonLd(string html, string jobId, Uri sourceUrl)
     {
         foreach (Match m in JsonLdBlocks().Matches(html))
         {
@@ -92,6 +100,8 @@ public sealed partial class JobPageParser : IJobPageParser
                 {
                     return new JobPosting
                     {
+                        JobId = jobId,
+                        SourceUrl = sourceUrl,
                         Title = Str(job, "title"),
                         Company = Str(job, "hiringOrganization", "name") ?? Str(job, "hiringOrganization"),
                         Location = LocationOf(job),
@@ -188,7 +198,7 @@ public sealed partial class JobPageParser : IJobPageParser
         };
     }
 
-    private static JobPosting FromMarkup(string html)
+    private static JobPosting FromMarkup(string html, string jobId, Uri sourceUrl)
     {
         var title = Meta(html, "og:title") ?? FirstText(H1(), html) ?? FirstText(TitleTag(), html);
         var description = Meta(html, "og:description") ?? Meta(html, "description");
@@ -196,6 +206,8 @@ public sealed partial class JobPageParser : IJobPageParser
 
         return new JobPosting
         {
+            JobId = jobId,
+            SourceUrl = sourceUrl,
             Title = title,
             Company = Meta(html, "og:site_name"),
             Description = body.Length > (description?.Length ?? 0) ? body : description,
@@ -236,7 +248,7 @@ public sealed partial class JobPageParser : IJobPageParser
         return text.Length > 0 ? text : null;
     }
 
-    /// <summary>Turns HTML into readable text: drops scripts and styles, keeps paragraph and list breaks.</summary>
+    /// <summary>Turns HTML into readable text: drops scripts and styles, keeps paragraph and list breaks. Cleaning basically</summary>
     public static string HtmlToText(string html)
     {
         var text = NonVisible().Replace(html, " ");

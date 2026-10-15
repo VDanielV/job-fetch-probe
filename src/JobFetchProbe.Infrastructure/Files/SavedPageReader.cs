@@ -24,6 +24,14 @@ public sealed partial class SavedPageReader : ISavedPageReader
     private static string Unwrap(string html)
     {
         var source = new StringBuilder();
+
+        // Keep the browser's "saved from url=…" note (it sits in the wrapper, not in the original HTML),
+        // so the page's address is still known after unwrapping.
+        if (SavedFromNote().Match(html) is { Success: true } note)
+        {
+            source.AppendLine(note.Value);
+        }
+
         foreach (Match m in LineCells().Matches(html))
         {
             var line = m.Groups[1].Value.Replace("<br>", string.Empty);
@@ -37,4 +45,7 @@ public sealed partial class SavedPageReader : ISavedPageReader
 
     [GeneratedRegex(@"<[^>]+>")]
     private static partial Regex Tags();
+
+    [GeneratedRegex(@"<!--\s*saved from url=\(\d+\)\S+?\s*-->", RegexOptions.IgnoreCase)]
+    private static partial Regex SavedFromNote();
 }

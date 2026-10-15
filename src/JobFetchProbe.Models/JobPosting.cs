@@ -3,8 +3,11 @@ namespace JobFetchProbe.Models;
 /// <summary>A job read from a page. This is what gets saved as &lt;JobId&gt;.json.</summary>
 public sealed record JobPosting
 {
-    public string JobId { get; init; } = string.Empty;
-    public string? SourceUrl { get; init; }
+    public required string JobId { get; init; }
+
+    /// <summary>Where the job can be reached. Always an absolute http(s) address.</summary>
+    public required Uri SourceUrl { get; init; }
+
     public string? Title { get; init; }
     public string? Company { get; init; }
     public string? Location { get; init; }
