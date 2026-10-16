@@ -2,7 +2,7 @@
 
 Personal study project. Local only. One operator, one machine.
 
-Updated: 15 Oct 2026. Replaces the original probe plan, which is kept in Git history under the tag `probe-v1`.
+Updated: 16 Oct 2026. Replaces the original probe plan, which is kept in Git history under the tag `probe-v1`.
 
 ## Goal
 
@@ -12,7 +12,7 @@ Collect job postings in one database, in one fixed flow that runs every time the
 2. **Job links → job descriptions.** The app goes through every job without a description, one at a time, reads its page, and stores the description, details and status.
 3. **Summary** with the totals; then the app exits.
 
-A separate, read-only **web app** shows what is stored: a paged table of all jobs, and a page per job with its details and description.
+A separate, read-only **web app** shows what is stored: a paged table of all jobs, and a page per job with its details and description. A read-only **REST API** (`JobCatalog`: one page of jobs, or one job in full) returns the same data as JSON; the web page gets its data only from it.
 
 ## How it got here
 
@@ -35,7 +35,8 @@ On 15 Oct 2026 it was **simplified to the one flow above**. The interactive prom
 | One local SQLite file (EF Core), created and migrated by the app | A database server, JSON files, imports and exports |
 | LinkedIn public job and search page layouts, schema.org `JobPosting`, generic fallback | Login, cookies, browser automation, applying to jobs |
 | One run per start, then exit | Commands, a prompt, watching the folder, scheduled runs |
-| A read-only web page: jobs table with pagination, one page per job | Editing, filtering, searching or deleting jobs in the web page; logins |
+| A read-only web page: menu, jobs table with pagination, details pane with a draggable divider | Editing, filtering, searching or deleting jobs in the web page; logins |
+| A read-only REST API: a page of jobs, one job | Writing endpoints, authentication, the web page using the API (later) |
 
 ## Boundary
 
@@ -69,7 +70,10 @@ The summary prints pages found, archived and kept; job links stored; description
 
 | Decision | Reason |
 | --- | --- |
-| Web app as its own project, reading through `IJobCatalog` | The console flow stays untouched; the web page never writes, so it can stay open while the console runs. Razor Pages with no scripts keeps it to two pages and one layout |
+| Web app as its own project, reading only through the API (`IJobCatalogClient`, two GET calls) | The console flow stays untouched; the web page never writes and never opens the database, so it can stay open while the console runs. One source of the reading rules (the API). Razor Pages: a menu, the jobs table and a details pane in one page; selection lives in the address (`?job=`), so it works with Back, reload and bookmarks |
+| One small script (`split.js`) only for the draggable divider and clickable rows | Everything else is server-rendered HTML and CSS; without the script the page still works, only dragging stops |
+| API as its own project with controllers | The only reader of the database for display; the web page uses it; OpenAPI describes it for clients. Read-only database connection for both readers |
+| The API's controllers use a service (`IJobRetriever`), not the repository | Layers Api → Services → Data: the reading rules (page limits, job ID) live in Services; the data layer says whether the database exists; the controller only maps results to HTTP. A missing database is one exception turned into 503 by one handler |
 | One flow, no commands or arguments | The work always happens in the same order; nothing to remember, nothing to choose wrongly |
 | Step 2 works from the database, not from the listing just written | A stopped run resumes on the next start by itself, even with an empty input folder; no job is read twice |
 | Status per job (`Pending`, `Read`, `Blocked`, `Failed`, `Gone`) | The database itself says what is done and what is left; `Gone` stops asking for pages that no longer exist |
@@ -81,7 +85,8 @@ The summary prints pages found, archived and kept; job links stored; description
 | Data folder outside the repository, one `Paths:DataRoot` setting | Git can never delete the database or saved pages; one folder to back up; one line to move it all |
 | Database rows (`Database/Entities`, `…Row`) separate from the shared models | Models say what the app works with; rows say how SQLite stores it. Tables can change without touching Services or Console; a small mapping class is the price |
 | One type per file; folders per step; one EF configuration class per table | Easy to find, small diffs; the C# convention (StyleCop SA1402) |
-| Four projects: Console, Services, Models, Infrastructure | Separates the console, the logic and the outside world; Services never touches HTTP, files or the database directly |
+| Seven projects: Console, Web, Api, Services, Models, Infrastructure, Data | Separates the apps, the logic and the outside world; Services never touches HTTP, files or the database directly |
+| Data layer as its own project (`JobFetchProbe.Data`): context, entities, migrations, all three repositories | One project owns the database; Models stays DTOs only; the interfaces stay in `Services/Abstractions` (Services defines what it needs, Data implements it). Only the API reads it for display (the web page goes through the API) |
 | Typed `HttpClient` from `IHttpClientFactory`; services that use it are transient | Pooled, rotated handlers: no socket exhaustion, no stale DNS, no manual disposal; nothing long-lived pins a handler |
 | `appsettings.json` instead of `app.config` | Standard configuration for modern .NET; binds to options classes and supports environment-variable overrides |
 | `SourceUrl` and `JobId` are `required`; `SourceUrl` is a `Uri` | A stored job must always be reachable again |

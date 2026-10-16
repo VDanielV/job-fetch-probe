@@ -1,0 +1,17 @@
+[
+  {
+    "Name": "Web + Api",
+    "Projects": [
+      {
+        "Path": "src\\JobFetchProbe.Api\\JobFetchProbe.Api.csproj",
+        "Action": "Start",
+        "DebugTarget": "JobFetchProbe.Api"
+      },
+      {
+        "Path": "src\\JobFetchProbe.Web\\JobFetchProbe.Web.csproj",
+        "Action": "Start",
+        "DebugTarget": "JobFetchProbe.Web"
+      }
+    ]
+  }
+]

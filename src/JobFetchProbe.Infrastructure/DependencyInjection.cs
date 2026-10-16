@@ -1,13 +1,9 @@
 using System.Net;
-using JobFetchProbe.Infrastructure.Database;
-using JobFetchProbe.Infrastructure.Database.Repositories;
 using JobFetchProbe.Infrastructure.Details;
 using JobFetchProbe.Infrastructure.Files;
 using JobFetchProbe.Infrastructure.Http;
 using JobFetchProbe.Infrastructure.Inbox;
 using JobFetchProbe.Services.Abstractions;
-using Microsoft.Data.Sqlite;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -17,7 +13,7 @@ namespace JobFetchProbe.Infrastructure;
 
 public static class DependencyInjection
 {
-    /// <summary>For the console app: settings, the HTTP client, the input folder and the database.</summary>
+    /// <summary>For the console app: settings, the HTTP client and the input folder. The database is added by JobFetchProbe.Data.</summary>
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         services.TryAddSingleton(TimeProvider.System);
@@ -71,33 +67,6 @@ public static class DependencyInjection
         services.AddSingleton<ISavedPageReader, SavedPageReader>();
         services.AddSingleton<IInboxFolder, InboxFolder>();
 
-        services.AddDatabase(configuration);
-        services.AddSingleton<IBatchRepository, SqliteBatchRepository>();
-        services.AddSingleton<IJobRepository, SqliteJobRepository>();
-        return services;
-    }
-
-    /// <summary>Only what the web app needs: the database settings and a read-only view of the jobs.</summary>
-    public static IServiceCollection AddJobCatalog(this IServiceCollection services, IConfiguration configuration)
-    {
-        services.AddDatabase(configuration);
-        services.AddSingleton<IJobCatalog, SqliteJobCatalog>();
-        return services;
-    }
-
-    private static IServiceCollection AddDatabase(this IServiceCollection services, IConfiguration configuration)
-    {
-        services.AddOptions<DatabaseSettings>()
-            .Bind(configuration.GetSection(DatabaseSettings.SectionName))
-            .Validate(s => !string.IsNullOrWhiteSpace(s.Path), "Database:Path is required");
-
-        // A factory, not a scoped context: the repositories are singletons and open a short-lived context per call,
-        // so no context (or connection) outlives the operation that needs it.
-        services.AddDbContextFactory<JobsDbContext>((sp, options) =>
-            options.UseSqlite(new SqliteConnectionStringBuilder
-            {
-                DataSource = sp.GetRequiredService<IOptions<DatabaseSettings>>().Value.FullPath,
-            }.ToString()));
         return services;
     }
 }

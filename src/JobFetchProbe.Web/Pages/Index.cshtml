@@ -1,57 +1,156 @@
 @page
 @model IndexModel
 @{
-    ViewData["Title"] = "All jobs";
+    ViewData["Title"] = Model.Selected?.Title ?? "Overview";
+    ViewData["Nav"] = "Overview";
+    var jobs = Model.Jobs;
+    var hasPane = Model.SelectedId is not null && jobs is not null;
 }
 
-<h1>Jobs</h1>
+<header class="page-head">
+    <div>
+        <h1>
+            Jobs
+            @if (jobs is not null)
+            {
+                <span class="chip count">@jobs.Total</span>
+            }
+        </h1>
+        <p>Every job collected from your saved search pages, newest first. Click a row to see its details.</p>
+    </div>
+</header>
 
-@if (Model.Jobs is null)
+@if (jobs is null)
 {
-    <p class="note">No database yet at <code>@Model.DatabasePath</code>. Run the console app first: it creates the database and fills it.</p>
+    <div class="content"><p class="note">@Model.Unavailable</p></div>
     return;
 }
 
-<div class="pager">
-    <span class="muted">@Model.Jobs.Total jobs · page @Model.Jobs.Page of @Model.Jobs.TotalPages</span>
-    <nav>
-        @if (Model.Jobs.Page > 1)
-        {
-            <a asp-page="/Index" asp-route-p="1">« First</a>
-            <a asp-page="/Index" asp-route-p="@(Model.Jobs.Page - 1)">‹ Previous</a>
-        }
-        else
-        {
-            <span class="off">« First</span>
-            <span class="off">‹ Previous</span>
-        }
-        @if (Model.Jobs.Page < Model.Jobs.TotalPages)
-        {
-            <a asp-page="/Index" asp-route-p="@(Model.Jobs.Page + 1)">Next ›</a>
-            <a asp-page="/Index" asp-route-p="@Model.Jobs.TotalPages">Last »</a>
-        }
-        else
-        {
-            <span class="off">Next ›</span>
-            <span class="off">Last »</span>
-        }
-    </nav>
-</div>
+<div class="workspace @(hasPane ? "has-pane" : null)">
+    <section class="list">
+        <div class="card">
+            <div class="table-scroll">
+                <table>
+                    <thead>
+                        <tr><th>Title</th><th>Company</th><th class="col-location">Location</th><th class="col-posted">Posted</th><th class="status-col">Status</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var job in jobs.Jobs)
+                        {
+                            var link = Url.Page("/Index", new { p = jobs.Page, job = job.JobId });
+                            <tr data-href="@link" class="@(job.JobId == Model.SelectedId ? "selected" : null)">
+                                <td class="title"><a href="@link">@(job.Title ?? job.JobId)</a></td>
+                                <td>@job.Company</td>
+                                <td class="muted col-location">@job.Location</td>
+                                <td class="muted col-posted">@job.Posted</td>
+                                <td><span class="status @job.Status">@job.Status</span></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <footer class="pager">
+                @{
+                    var first = jobs.Total == 0 ? 0 : (jobs.Page - 1) * jobs.PageSize + 1;
+                    var lastShown = Math.Min(jobs.Page * jobs.PageSize, jobs.Total);
+                }
+                <span>Showing @first–@lastShown of @jobs.Total jobs</span>
+                <nav aria-label="Pages">
+                    @if (jobs.Page > 1)
+                    {
+                        <a asp-page="/Index" asp-route-p="@(jobs.Page - 1)" asp-route-job="@Model.SelectedId" aria-label="Previous page">‹</a>
+                    }
+                    else
+                    {
+                        <span class="off">‹</span>
+                    }
+                    @foreach (var n in Model.PageNumbers())
+                    {
+                        if (n is null)
+                        {
+                            <span class="gap">…</span>
+                        }
+                        else if (n == jobs.Page)
+                        {
+                            <span class="current" aria-current="page">@n</span>
+                        }
+                        else
+                        {
+                            <a asp-page="/Index" asp-route-p="@n" asp-route-job="@Model.SelectedId">@n</a>
+                        }
+                    }
+                    @if (jobs.Page < jobs.TotalPages)
+                    {
+                        <a asp-page="/Index" asp-route-p="@(jobs.Page + 1)" asp-route-job="@Model.SelectedId" aria-label="Next page">›</a>
+                    }
+                    else
+                    {
+                        <span class="off">›</span>
+                    }
+                </nav>
+            </footer>
+        </div>
+    </section>
 
-<table>
-    <thead>
-        <tr><th>Title</th><th>Company</th><th>Location</th><th>Posted</th><th>Status</th></tr>
-    </thead>
-    <tbody>
-        @foreach (var job in Model.Jobs.Jobs)
-        {
-            <tr>
-                <td><a asp-page="/Job" asp-route-id="@job.JobId" asp-route-p="@Model.Jobs.Page">@(job.Title ?? job.JobId)</a></td>
-                <td>@job.Company</td>
-                <td>@job.Location</td>
-                <td>@job.Posted</td>
-                <td><span class="status @job.Status">@job.Status</span></td>
-            </tr>
-        }
-    </tbody>
-</table>
+    @if (hasPane)
+    {
+        <div class="splitter" role="separator" aria-orientation="vertical" aria-label="Resize the details pane" tabindex="0" title="Drag to resize · double-click to reset"></div>
+        <aside class="detail" aria-label="Job details">
+            <div class="detail-top">
+                <a class="close" asp-page="/Index" asp-route-p="@jobs.Page" aria-label="Close the details" title="Close">✕</a>
+                @if (Model.Selected is { } s)
+                {
+                    <span>#<span class="detail-id">@s.JobId</span></span>
+                    <span class="status @s.Status">@s.Status</span>
+                }
+            </div>
+
+            @if (Model.Selected is not { } job)
+            {
+                <p class="note">There is no job @Model.SelectedId in the database.</p>
+            }
+            else
+            {
+                <h2>@(job.Title ?? job.JobId)</h2>
+                <p class="where">@string.Join(" · ", new[] { job.Company, job.Location }.Where(s => !string.IsNullOrWhiteSpace(s)))</p>
+                <a class="button" href="@job.Url" target="_blank" rel="noopener noreferrer">Open the job page ↗</a>
+
+                <dl class="facts">
+                    <div><dt>Job ID</dt><dd>@job.JobId</dd></div>
+                    @if (job.Posted is not null)
+                    {
+                        <div><dt>Posted</dt><dd>@job.Posted</dd></div>
+                    }
+                    @if (job.EmploymentType is not null)
+                    {
+                        <div><dt>Employment type</dt><dd>@job.EmploymentType</dd></div>
+                    }
+                    @foreach (var detail in job.Details)
+                    {
+                        <div><dt>@detail.Label</dt><dd>@detail.Value</dd></div>
+                    }
+                    <div><dt>First seen</dt><dd>@IndexModel.When(job.FirstSeenAt)</dd></div>
+                    @if (job.RetrievedAt is { } read)
+                    {
+                        <div><dt>Description read</dt><dd>@IndexModel.When(read)</dd></div>
+                    }
+                    @if (job.LastError is not null)
+                    {
+                        <div><dt>Last attempt</dt><dd>@(job.LastAttemptAt is { } at ? IndexModel.When(at) : "")</dd></div>
+                        <div><dt>Last error</dt><dd>@job.LastError</dd></div>
+                    }
+                </dl>
+
+                <h3>Description</h3>
+                @if (string.IsNullOrWhiteSpace(job.Description))
+                {
+                    <p class="note">No description yet. The console app reads it on its next run (status Pending, Blocked or Failed), unless the page is gone.</p>
+                }
+                else
+                {
+                    <div class="description">@job.Description</div>
+                }
+            }
+        </aside>
+    }
+</div>

@@ -7,7 +7,7 @@ A .NET console app that collects job postings in two steps and keeps them in a S
 
 Then it prints a summary with the totals and exits. There are no commands or options: every start runs the same flow.
 
-A small **web app** shows what is stored: a table of all jobs with pagination, and a page per job with its details and description (see [Web app](#web-app)).
+A small **web app** shows what is stored: a table of all jobs with pagination, and a page per job with its details and description (see [Web app](#web-app)), and a small **REST API** returns the same data as JSON (see [API](#api)).
 
 ## Run
 
@@ -72,16 +72,39 @@ Each result is stored as soon as it is known, so a stopped run loses nothing: th
 
 ## Web app
 
+The web app shows the jobs it gets from the [API](#api), so both must run. In two terminals:
+
 ```sh
+dotnet run --project src/JobFetchProbe.Api
 dotnet run --project src/JobFetchProbe.Web
 ```
 
-Then open <http://localhost:5080> (Visual Studio: set `JobFetchProbe.Web` as the startup project). Stop it with Ctrl+C.
+Then open <http://localhost:5080>. Stop each with Ctrl+C. In Visual Studio, choose the startup profile **Web + Api** (from `JobFetchProbe.slnLaunch`, Visual Studio 2022 17.10 or later) and press F5: it starts both.
 
-- **`/`** lists all jobs, newest job IDs first, 25 per page, with First / Previous / Next / Last. Each row shows the title, company, location, posted date and status.
-- **Clicking a title** opens `/jobs/<id>`: company and location, status, a link to the job's own page, the labelled details (seniority, employment type, sectors…), when it was first seen and read, the last error if any, and the full description. "← All jobs" returns to the same page of the table.
+The screen has a narrow menu on the left (the app's logo and name, **Overview** and **Acquire**) and the content on the right:
 
-It reads the same database as the console app (same `Paths:DataRoot`, in `src/JobFetchProbe.Web/appsettings.json`) and never writes to it. If the database does not exist yet, it says so: run the console app first. You can keep it open while the console app runs; reload to see new jobs.
+- **Overview** (`/`) lists all jobs, newest job IDs first, 25 per page: title, company, location, posted date and a coloured status tag (Read green, Pending blue, Blocked orange, Failed red, Gone grey). Below the table: "Showing 1–25 of 107 jobs" and the page buttons.
+- **Clicking a row** opens that job in a **details pane** on the right (`/?p=2&job=<id>`): status, title, company and location, a link to the job's own page, the labelled details (seniority, employment type, sectors…), when it was first seen and read, the last error if any, and the full description. ✕ closes it. The address can be bookmarked; old `/jobs/<id>` links open the same view.
+- **The divider** between the table and the pane can be dragged left or right; the table's text wraps, and on a narrow table the Posted and Location columns step aside. The width is remembered in your browser; double-click the divider to reset it (or focus it and use the arrow keys).
+- **Acquire** (`/acquire`) explains, for now, how jobs get in: save search pages into `input`, run the console app.
+
+It never touches the database: it only calls the API's two endpoints, at `JobCatalogApi:BaseUrl` in `src/JobFetchProbe.Web/appsettings.json` (`http://localhost:5081`). If the database does not exist yet, it shows the API's message (run the console app first); if the API is not running, it says so. You can keep it open while the console app runs; reload to see new jobs.
+
+## API
+
+```sh
+dotnet run --project src/JobFetchProbe.Api
+```
+
+Listens on <http://localhost:5081> (Visual Studio: set `JobFetchProbe.Api` as the startup project). `src/JobFetchProbe.Api/JobFetchProbe.Api.http` has ready-made requests for Visual Studio or VS Code.
+
+| Request | Returns |
+| --- | --- |
+| `GET /api/JobCatalog?page=1&pageSize=25` | `200` with a `JobSummaryPage`: `jobs` (jobId, title, company, location, posted, status), `page`, `pageSize`, `total`, `totalPages`. Newest job IDs first. `page` defaults to 1, `pageSize` to 25 (1–100); a page past the end returns the last page. `400` with the errors if a value is out of range |
+| `GET /api/JobCatalog/{jobId}` | `200` with a `StoredJob`: url, title, company, location, posted, employment type, `details` (label/value), description, status, last error, first seen, read and last attempt times. `404` if the job is not in the database |
+| `GET /openapi/v1.json` | The OpenAPI description of the API (Development only) |
+
+Errors are returned as standard problem details. If the database does not exist yet, both endpoints return `503`: the data layer reports it, the service turns it into a `JobStoreUnavailableException`, and one handler in the API turns that into the response, so the controller holds no database logic. The API reads the same database as the console app (same `Paths:DataRoot`, in its own `appsettings.json`) and opens it **read-only**: it can never change it. The web app gets its data only from these two endpoints.
 
 ## Folders
 
@@ -90,9 +113,9 @@ Code and data are kept apart. The repository holds only what belongs in Git; eve
 ```text
 C:\Code\job-fetcher\
   job-fetch-probe\                 ← the repository: code and documents only (this is what goes to GitHub)
-    docs\                          plan and spec
-    src\                           the five projects (Console, Web, Services, Models, Infrastructure)
-    .gitignore  Directory.Build.props  JobFetchProbe.sln  nuget.config  README.md
+    docs\                          plan, spec and database diagram
+    src\                           the seven projects (Console, Web, Api, Services, Models, Infrastructure, Data)
+    .gitignore  CLAUDE.md  Directory.Build.props  JobFetchProbe.sln  JobFetchProbe.slnLaunch  nuget.config  README.md
 
   job-fetch-probe-data\            ← your data: never committed, never touched by Git
     database\
@@ -103,7 +126,7 @@ C:\Code\job-fetcher\
 
 - **Your data is safe from Git.** `git clean -fdx`, or deleting and re-cloning the repository, cannot touch the database or your saved pages.
 - **One place to back up.** Copy `job-fetch-probe-data` while the app is closed.
-- **One setting.** All of these paths come from `Paths:DataRoot` in `appsettings.json` (the console app's and the web app's). Change that line to move all your data. The app creates `input`, `input\archived` and the database on its first start.
+- **One setting.** All of these paths come from `Paths:DataRoot` in `appsettings.json` (the console app's and the API's; the web app has no data paths, it asks the API). Change that line to move all your data. The app creates `input`, `input\archived` and the database on its first start.
 - **Individual overrides still work.** `Inbox:Folder`, `Inbox:ArchiveFolder` and `Database:Path` can each be set on their own; they then win over `DataRoot`.
 
 ## The database
@@ -128,6 +151,14 @@ WHERE lj.BatchId = '20261014_183201' ORDER BY lj.Position;
 | `ListingSources` | The pages each listing was read from |
 | `ListingJobs` | The jobs each listing contained, as their cards showed them |
 
+The diagram of these tables and their relationships is in [`docs/database.md`](docs/database.md).
+
+The tables are defined in `src/JobFetchProbe.Data` (one entity and one configuration class per table). After changing them, add a migration from the repository folder; the app applies it on its next start:
+
+```sh
+dotnet ef migrations add <Name> --project src/JobFetchProbe.Data --startup-project src/JobFetchProbe.Console --output-dir Migrations
+```
+
 ## Configuration
 
 `src/JobFetchProbe.Console/appsettings.json`:
@@ -150,19 +181,26 @@ Any setting can be overridden with an environment variable, using `__` for `:`, 
 
 ```text
 Console ──► Services ──► Models
-   │            ▲
-   └──► Infrastructure (implements the Services interfaces) ◄── Web
+   │            ▲  ▲
+   ├──► Infrastructure    (HTTP, saved pages, input folder: implements the Services interfaces)
+   └──► Data ─────────┘   (SQLite: implements the repository interfaces)
+
+Web ──HTTP──► Api ──► Services (IJobRetriever) ──► IJobCatalog ◄── Data
 ```
+
+Services defines the interfaces it needs (`Services/Abstractions`); Infrastructure and Data implement them, so Services never touches HTTP, files or the database itself. The reading side follows Web → Api → Services → Data: the web app calls the API over HTTP and references only Models (the DTOs in the JSON); the API's controllers use only the service layer (`IJobRetriever`); only the API's `Program.cs` refers to Data, to register it.
 
 | Project | Role | Main files |
 | --- | --- | --- |
 | `JobFetchProbe.Models` | Data shapes shared by all layers. No dependencies | `Jobs/` (`JobPosting`, `JobResult` …), `Search/` (`JobListing`, `JobSearch`, `SearchResult`), `Inbox/` (`JobSearchBatch`, `InboxRunResult` …), `Details/` (`DetailsRunResult`, `DetailsEvent` …), `Catalog/` (`JobSummary`, `JobSummaryPage`, `StoredJob`: what the web app shows) |
-| `JobFetchProbe.Services` | The two steps and the interfaces they need | `Inbox/InboxService` (step 1), `Search/SearchService` + `SearchPageParser` (reading saved search pages), `Details/DetailsService` + `CircuitBreaker` (step 2), `JobService` + `Parsing/JobPageParser` (reading a job page), `Abstractions/` |
-| `JobFetchProbe.Infrastructure` | HTTP, files and the database | `Http/HttpPageFetcher`, `Files/SavedPageReader`, `Inbox/InboxFolder`, `Database/JobsDbContext`, `Database/Entities/` (table rows), `Database/Configurations/` (one per table), `Database/Repositories/` (`SqliteBatchRepository`, `SqliteJobRepository`, `SqliteJobCatalog`), `Database/Migrations/`, `Configuration/DataPaths`, settings classes, `DependencyInjection` |
+| `JobFetchProbe.Services` | The two steps, reading stored jobs for the API, and the interfaces they need | `Catalog/JobRetriever` (`IJobRetriever`, used by the API), `Inbox/InboxService` (step 1), `Search/SearchService` + `SearchPageParser` (reading saved search pages), `Details/DetailsService` + `CircuitBreaker` (step 2), `JobService` + `Parsing/JobPageParser` (reading a job page), `Abstractions/` |
+| `JobFetchProbe.Infrastructure` | HTTP and files | `Http/HttpPageFetcher`, `Files/SavedPageReader`, `Inbox/InboxFolder`, settings classes, `DependencyInjection` (`AddInfrastructure`) |
+| `JobFetchProbe.Data` | The data layer: the SQLite database (EF Core) | `JobsDbContext`, `Entities/` (table rows), `Configurations/` (one per table), `Repositories/` (`SqliteBatchRepository`, `SqliteJobRepository`, `SqliteJobCatalog`), `Migrations/`, `JobRowMapping`, `DatabaseInitializer`, `Configuration/DataPaths`, `DependencyInjection` (`AddJobStore` read-write for the console, `AddJobCatalog` read-only for Web and Api) |
 | `JobFetchProbe.Console` | Entry point: configuration, dependency injection, console output | `Program`, `PipelineConsole` (step 1 → step 2 → summary), `InboxConsole`, `DetailsConsole`, `ConsoleLog`, `SyncProgress`, `appsettings.json` |
-| `JobFetchProbe.Web` | Read-only web page over the database (Razor Pages) | `Program`, `Pages/Index` (table and pagination), `Pages/Job` (one job), `Pages/Shared/_Layout` (styles), `appsettings.json` |
+| `JobFetchProbe.Web` | Read-only web page over the API (Razor Pages) | `Program`, `Api/JobCatalogClient` (`IJobCatalogClient`: the two API calls), `Pages/Index` (table, pagination and details pane), `Pages/Acquire`, `Pages/Job` (redirect of old links), `Pages/Shared/_Layout` (menu), `wwwroot/css/site.css`, `wwwroot/js/split.js` (divider and clickable rows), `wwwroot/img/` (logo), `appsettings.json` |
+| `JobFetchProbe.Api` | Read-only REST API over the database (ASP.NET Core controllers, OpenAPI) | `Program`, `Controllers/JobCatalogController` (uses `IJobRetriever`), `Handlers/JobStoreUnavailableHandler` (503), `JobFetchProbe.Api.http`, `appsettings.json` |
 
-Each file holds one type and is named after it. The database rows (`Database/Entities`, suffix `Row`) are kept apart from the shared models on purpose: the models describe what the app works with, the rows how SQLite stores it, so the tables can change without touching the other projects.
+Each file holds one type and is named after it. The database rows (`Data/Entities`, suffix `Row`) are kept apart from the shared models on purpose: the models (DTOs) describe what the app works with, the rows how SQLite stores it. Rows never leave the Data project; its repositories return models, so the tables can change without touching the other projects.
 
 ### HTTP client
 
@@ -176,6 +214,8 @@ The client is a **typed client** registered with `AddHttpClient<IPageFetcher, Ht
 
 - [`docs/plan.md`](docs/plan.md): goal, scope, boundary, design decisions, limitations.
 - [`docs/spec.md`](docs/spec.md): what the code implements, project by project.
+- [`docs/database.md`](docs/database.md): the tables and how they relate, with a diagram (`docs/database.svg`).
+- [`CLAUDE.md`](CLAUDE.md): how changes are made in this repository (plan first, then "go") and the architecture rules.
 
 ## History
 

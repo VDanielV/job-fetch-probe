@@ -1,0 +1,19 @@
+# Requests to try the API from Visual Studio or VS Code (REST Client). Start the API first.
+@api = http://localhost:5081
+
+### One page of jobs
+GET {{api}}/api/JobCatalog?page=1&pageSize=25
+Accept: application/json
+
+### One job in full (use an ID from the page above)
+GET {{api}}/api/JobCatalog/4476446382
+Accept: application/json
+
+### Invalid page size (400)
+GET {{api}}/api/JobCatalog?page=1&pageSize=0
+
+### Unknown job (404)
+GET {{api}}/api/JobCatalog/123
+
+### The API description (Development only)
+GET {{api}}/openapi/v1.json

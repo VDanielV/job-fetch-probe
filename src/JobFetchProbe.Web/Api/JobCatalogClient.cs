@@ -1,0 +1,68 @@
+using System.Net;
+using JobFetchProbe.Models.Catalog;
+using Microsoft.AspNetCore.Mvc;
+
+namespace JobFetchProbe.Web.Api;
+
+/// <summary>
+/// Typed HTTP client for the API's JobCatalog controller. Receives its HttpClient (base address and timeout from
+/// <see cref="JobCatalogApiSettings"/>) from IHttpClientFactory and never creates or disposes one.
+/// </summary>
+public sealed class JobCatalogClient(HttpClient http) : IJobCatalogClient
+{
+    private const string Route = "api/JobCatalog";
+
+    public async Task<JobSummaryPage> GetPageAsync(int page, int pageSize, CancellationToken ct = default)
+    {
+        using var response = await SendAsync($"{Route}?page={page}&pageSize={pageSize}", ct);
+        await ThrowIfUnavailableAsync(response, ct);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<JobSummaryPage>(ct)
+            ?? throw new InvalidOperationException("The API returned an empty page.");
+    }
+
+    public async Task<StoredJob?> GetJobAsync(string jobId, CancellationToken ct = default)
+    {
+        using var response = await SendAsync($"{Route}/{Uri.EscapeDataString(jobId)}", ct);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+        await ThrowIfUnavailableAsync(response, ct);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<StoredJob>(ct);
+    }
+
+    /// <summary>Sends the GET; a connection failure or a timeout means the API is not reachable.</summary>
+    private async Task<HttpResponseMessage> SendAsync(string path, CancellationToken ct)
+    {
+        try
+        {
+            return await http.GetAsync(path, ct);
+        }
+        catch (Exception ex) when (ex is HttpRequestException || (ex is TaskCanceledException && !ct.IsCancellationRequested))
+        {
+            throw new JobCatalogUnavailableException(
+                $"The API is not reachable at {http.BaseAddress}. Start JobFetchProbe.Api (or check JobCatalogApi:BaseUrl).", ex);
+        }
+    }
+
+    /// <summary>503 from the API: no database yet. Its problem details say why; that text is shown as is.</summary>
+    private static async Task ThrowIfUnavailableAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        if (response.StatusCode != HttpStatusCode.ServiceUnavailable)
+        {
+            return;
+        }
+        ProblemDetails? problem = null;
+        try
+        {
+            problem = await response.Content.ReadFromJsonAsync<ProblemDetails>(ct);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            // Not problem details: fall back to the generic text below.
+        }
+        throw new JobCatalogUnavailableException(problem?.Detail ?? "The API cannot read the jobs database right now.");
+    }
+}

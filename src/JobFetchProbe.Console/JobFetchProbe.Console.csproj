@@ -17,6 +17,7 @@
   <ItemGroup>
     <ProjectReference Include="..\JobFetchProbe.Services\JobFetchProbe.Services.csproj" />
     <ProjectReference Include="..\JobFetchProbe.Infrastructure\JobFetchProbe.Infrastructure.csproj" />
+    <ProjectReference Include="..\JobFetchProbe.Data\JobFetchProbe.Data.csproj" />
   </ItemGroup>
 
   <ItemGroup>

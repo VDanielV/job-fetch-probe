@@ -1,4 +1,4 @@
-using JobFetchProbe.Infrastructure.Database;
+using JobFetchProbe.Data;
 using JobFetchProbe.Models.Details;
 using JobFetchProbe.Models.Inbox;
 using Microsoft.Extensions.Options;

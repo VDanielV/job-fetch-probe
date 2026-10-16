@@ -1,3 +1,4 @@
+using JobFetchProbe.Services.Catalog;
 using JobFetchProbe.Services.Details;
 using JobFetchProbe.Services.Inbox;
 using JobFetchProbe.Services.Parsing;
@@ -22,6 +23,16 @@ public static class DependencyInjection
         services.AddTransient<ISearchService, SearchService>();
         services.AddTransient<IInboxService, InboxService>();
         services.AddTransient<IDetailsService, DetailsService>();
+        return services;
+    }
+
+    /// <summary>
+    /// For the API: reading the stored jobs (<see cref="IJobRetriever"/>). Needs an <c>IJobCatalog</c> from the data
+    /// layer (<c>AddJobCatalog</c>). Separate from <see cref="AddServices"/>, so the API gets nothing that sends requests.
+    /// </summary>
+    public static IServiceCollection AddJobRetriever(this IServiceCollection services)
+    {
+        services.AddSingleton<IJobRetriever, JobRetriever>();
         return services;
     }
 }

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The data layer: the SQLite database (EF Core), its entities, table configurations, migrations and the
+       repositories that implement the Services abstractions. Entities never leave this project; callers get Models. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.13" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\JobFetchProbe.Services\JobFetchProbe.Services.csproj" />
+  </ItemGroup>
+
+</Project>

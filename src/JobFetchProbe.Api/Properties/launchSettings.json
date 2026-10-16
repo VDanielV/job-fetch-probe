@@ -1,0 +1,13 @@
+{
+  "profiles": {
+    "JobFetchProbe.Api": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "launchUrl": "api/JobCatalog?page=1&pageSize=10",
+      "applicationUrl": "http://localhost:5081",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}

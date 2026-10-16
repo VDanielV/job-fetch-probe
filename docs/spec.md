@@ -6,7 +6,7 @@
 2. **Step 2, job links → job descriptions.** Reads every job in the database without a description, one at a time, politely and behind a circuit breaker, and stores each description, its details and the job's status.
 3. **Summary** with the totals.
 
-There are no commands, options or arguments. A separate, read-only web app (`JobFetchProbe.Web`) shows the stored jobs. This spec describes the current code. It follows [`plan.md`](plan.md). The original probe spec is kept in Git history under the tag `probe-v1`.
+There are no commands, options or arguments. A separate, read-only web app (`JobFetchProbe.Web`) shows the stored jobs, and a read-only REST API (`JobFetchProbe.Api`) returns them as JSON. This spec describes the current code. It follows [`plan.md`](plan.md). The original probe spec is kept in Git history under the tag `probe-v1`.
 
 ## Solution layout
 
@@ -21,36 +21,44 @@ job-fetch-probe/
       Search/    JobListing.cs  JobSearch.cs  SearchResult.cs
       Inbox/     JobSearchBatch.cs  BatchSource.cs  InboxRunResult.cs  InboxFileResult.cs  InboxProgress.cs
       Details/   DetailsRunResult.cs  DetailsEvent.cs  DetailsEventKind.cs
-      Catalog/   JobSummary.cs  JobSummaryPage.cs  StoredJob.cs                          (web app)
+      Catalog/   JobSummary.cs  JobSummaryPage.cs  StoredJob.cs                          (web app, api)
     JobFetchProbe.Services/
       DependencyInjection.cs  IJobService.cs  JobService.cs
       Abstractions/  IPageFetcher.cs  ISavedPageReader.cs  IInboxFolder.cs  IBatchRepository.cs  IJobRepository.cs
-                     IJobCatalog.cs                                                    (web app)
+                     IJobCatalog.cs                                                    (web app, api)
+      Catalog/       IJobRetriever.cs  JobRetriever.cs  JobStoreUnavailableException.cs   (api)
       Parsing/       IJobPageParser.cs  JobPageParser.cs  JobIdResolver.cs
       Search/        ISearchService.cs  SearchService.cs  ISearchPageParser.cs  SearchPageParser.cs  ParsedSearch.cs
       Inbox/         IInboxService.cs  InboxService.cs                                       (step 1)
       Details/       IDetailsService.cs  DetailsService.cs                                   (step 2)
                      CircuitBreaker.cs  CircuitBreakerOptions.cs  CircuitState.cs
     JobFetchProbe.Infrastructure/
-      DependencyInjection.cs   AddInfrastructure (console) · AddJobCatalog (web)
-      Configuration/  DataPaths.cs
+      DependencyInjection.cs   AddInfrastructure (console)
       Http/      HttpPageFetcher.cs  HttpClientSettings.cs
       Files/     SavedPageReader.cs
       Inbox/     InboxFolder.cs  InboxSettings.cs
       Details/   DetailsSettings.cs  CircuitBreakerSettings.cs
-      Database/  JobsDbContext.cs  DatabaseSettings.cs  DatabaseInitializer.cs  JobRowMapping.cs
-                 DesignTimeJobsDbContextFactory.cs
-        Entities/        JobRow.cs  JobDetailRow.cs  JobStatus.cs  ListingRow.cs  ListingSourceRow.cs  ListingJobRow.cs
-        Configurations/  <Row>Configuration.cs, one IEntityTypeConfiguration per table
-        Repositories/    SqliteBatchRepository.cs  SqliteJobRepository.cs  SqliteJobCatalog.cs
-        Migrations/      InitialCreate, RemoveSearchesAndListingProgress, JobsDbContextModelSnapshot.cs
+    JobFetchProbe.Data/
+      DependencyInjection.cs   AddJobStore (console, read-write) · AddJobCatalog (web, api, read-only)
+      JobsDbContext.cs  DatabaseSettings.cs  DatabaseInitializer.cs  JobRowMapping.cs  DesignTimeJobsDbContextFactory.cs
+      Configuration/   DataPaths.cs
+      Entities/        JobRow.cs  JobDetailRow.cs  JobStatus.cs  ListingRow.cs  ListingSourceRow.cs  ListingJobRow.cs
+      Configurations/  <Row>Configuration.cs, one IEntityTypeConfiguration per table
+      Repositories/    SqliteBatchRepository.cs  SqliteJobRepository.cs  SqliteJobCatalog.cs
+      Migrations/      InitialCreate, RemoveSearchesAndListingProgress, JobsDbContextModelSnapshot.cs
     JobFetchProbe.Console/
       Program.cs  PipelineConsole.cs  InboxConsole.cs  DetailsConsole.cs
       ConsoleLog.cs  SyncProgress.cs  appsettings.json
     JobFetchProbe.Web/
       Program.cs  appsettings.json  Properties/launchSettings.json
-      Pages/     Index.cshtml(.cs)  Job.cshtml(.cs)  _ViewImports.cshtml  _ViewStart.cshtml  Shared/_Layout.cshtml
-  docs/      plan.md  spec.md
+      Api/       IJobCatalogClient.cs  JobCatalogClient.cs  JobCatalogApiSettings.cs  JobCatalogUnavailableException.cs
+      Pages/     Index.cshtml(.cs)  Acquire.cshtml(.cs)  Job.cshtml(.cs)  _ViewImports.cshtml  _ViewStart.cshtml  Shared/_Layout.cshtml
+      wwwroot/   css/site.css  js/split.js  img/logo.png  img/favicon.png
+    JobFetchProbe.Api/
+      Program.cs  appsettings.json  Properties/launchSettings.json  JobFetchProbe.Api.http
+      Controllers/  JobCatalogController.cs
+      Handlers/     JobStoreUnavailableHandler.cs
+  docs/      plan.md  spec.md  database.md  database.svg
 ```
 
 The repository holds code and documents only. Everything the app reads or writes is under `Paths:DataRoot`, a folder outside the repository, so Git commands (`git clean -fdx`, a fresh clone) never touch it:
@@ -62,30 +70,35 @@ job-fetch-probe-data/              Paths:DataRoot
     archived/                      Inbox:ArchiveFolder: pages already read
 ```
 
-`DataPaths` (Infrastructure/Configuration, used by both apps) adds these three paths as an in-memory configuration source **underneath** all others (index 0), computed from the final value of `Paths:DataRoot`. A path set in `appsettings.json` or an environment variable therefore still wins on its own. Without `Paths:DataRoot`, each setting is used as given (or its code default). At start-up the app creates `input` and `input/archived` and prints `Data folder: …`.
+`DataPaths` (Data/Configuration, used by the console app and the API) adds these three paths as an in-memory configuration source **underneath** all others (index 0), computed from the final value of `Paths:DataRoot`. A path set in `appsettings.json` or an environment variable therefore still wins on its own. Without `Paths:DataRoot`, each setting is used as given (or its code default). At start-up the app creates `input` and `input/archived` and prints `Data folder: …`.
 
 Conventions:
 
 - **One type per file**, the file named after the type; namespaces follow folders.
-- **Models are not database rows.** `JobFetchProbe.Models` holds the shapes every layer shares (immutable records). The tables have their own classes in `Infrastructure/Database/Entities` (mutable, with keys, positions and status columns, suffix `Row`), used only by the database code and copied to and from the models in `JobRowMapping`.
+- **Models are not database rows.** `JobFetchProbe.Models` holds the shapes every layer shares (immutable records). The tables have their own classes in `Data/Entities` (mutable, with keys, positions and status columns, suffix `Row`), used only inside the Data project and copied to and from the models in `JobRowMapping`. The repositories take and return models only.
 
 ## Dependencies
 
 ```text
 Console ──► Services ──► Models
-   │            ▲
-   └──► Infrastructure (implements the Services interfaces) ◄── Web
+   │            ▲  ▲
+   ├──► Infrastructure    (implements IPageFetcher, ISavedPageReader, IInboxFolder)
+   └──► Data ─────────┘   (implements IBatchRepository, IJobRepository, IJobCatalog)
+
+Web ──HTTP──► Api ──► Services (IJobRetriever → IJobCatalog) ; Api/Program.cs ──► Data (registration only)
 ```
 
 | Project | References | Packages |
 | --- | --- | --- |
 | Models | none | none |
 | Services | Models | `Microsoft.Extensions.DependencyInjection.Abstractions` 10.0.0 |
-| Infrastructure | Services | `Microsoft.Extensions.Configuration` 10.0.0, `Microsoft.Extensions.Http` 10.0.0, `Microsoft.Extensions.Options.ConfigurationExtensions` 10.0.0, `Microsoft.EntityFrameworkCore.Sqlite` 10.0.13 |
-| Console | Services, Infrastructure | `Microsoft.Extensions.Hosting` 10.0.0, `Microsoft.EntityFrameworkCore.Design` 10.0.13 (design time only, `PrivateAssets=all`) |
-| Web | Infrastructure | none (`Microsoft.NET.Sdk.Web`: ASP.NET Core shared framework) |
+| Infrastructure | Services | `Microsoft.Extensions.Http` 10.0.0, `Microsoft.Extensions.Options.ConfigurationExtensions` 10.0.0 |
+| Data | Services | `Microsoft.EntityFrameworkCore.Sqlite` 10.0.13, `Microsoft.Extensions.Configuration` 10.0.0, `Microsoft.Extensions.Options.ConfigurationExtensions` 10.0.0 |
+| Console | Services, Infrastructure, Data | `Microsoft.Extensions.Hosting` 10.0.0, `Microsoft.EntityFrameworkCore.Design` 10.0.13 (design time only, `PrivateAssets=all`) |
+| Web | Models | none (`Microsoft.NET.Sdk.Web`: ASP.NET Core shared framework, which includes `IHttpClientFactory`) |
+| Api | Services, Data (Data only for `Program.cs`) | `Microsoft.AspNetCore.OpenApi` 10.0.13 (`Microsoft.NET.Sdk.Web`) |
 
-Services never use `HttpClient`, files or the database directly; everything outside goes through `Services/Abstractions`.
+Services never use `HttpClient`, files or the database directly; everything outside goes through `Services/Abstractions`, which Infrastructure and Data implement. The web app references only Models and reads through the API; the API's controllers use only Services. Neither can reach the console's HTTP client or the input folder.
 
 ## Run
 
@@ -254,13 +267,32 @@ Meta content is HTML-decoded twice (some sites double-escape).
 
 ## Web app (`JobFetchProbe.Web`)
 
-ASP.NET Core Razor Pages, read-only. `dotnet run --project src/JobFetchProbe.Web` → <http://localhost:5080> (`Properties/launchSettings.json`).
+ASP.NET Core Razor Pages, read-only. `dotnet run --project src/JobFetchProbe.Web` → <http://localhost:5080> (`Properties/launchSettings.json`). It needs the API running; `JobFetchProbe.slnLaunch` (Visual Studio profile "Web + Api") starts both.
 
-- **Configuration:** its own `appsettings.json` with the same `Paths:DataRoot`; `DataPaths.AddDataRootDefaults` derives `Database:Path` exactly as for the console app. EF Core logs at `Warning` and above.
-- **No writes, no migrations:** it only reads through `IJobCatalog`. If the database file does not exist, the table page says so and nothing is created. It can run while the console app writes (SQLite handles one writer and readers).
-- **`/`** (`Pages/Index`): `IJobCatalog.GetPageAsync(p, 25)`. Jobs are ordered by job ID, longest then highest first (LinkedIn IDs grow over time, so newest first; the database cannot sort by the stored dates). Paging (`Skip`/`Take`) runs in the database; `?p=` out of range is clamped to the first or last page. Columns: Title (link), Company, Location, Posted, Status. Pager: First, Previous, Next, Last, and "<n> jobs · page x of y".
-- **`/jobs/{id}`** (`Pages/Job`): `IJobCatalog.GetAsync(id)`, 404 if unknown. Shows title, company · location, status, a link to the job page (`Url`), Job ID, Posted, Employment type, every stored detail, First seen, Description read, and Last attempt / Last error when there is one; then the description (line breaks kept), or a note that it is not read yet. `?p=` is kept so "← All jobs" returns to the same table page.
-- **Styles:** a few CSS rules inline in `Pages/Shared/_Layout.cshtml`, light and dark (`color-scheme`); no scripts, no external files.
+- **Data only from the API:** the pages call `IJobCatalogClient`, a typed `HttpClient` (`AddHttpClient<IJobCatalogClient, JobCatalogClient>`) with `BaseAddress` = `JobCatalogApi:BaseUrl` (default `http://localhost:5081`) and `Timeout` = `JobCatalogApi:TimeoutSeconds` (default 10, 1–120; both validated at start-up). The JSON is read into the Models DTOs (`JobSummaryPage`, `StoredJob`). The web app has no database settings and never opens the database.
+- **When the jobs cannot be shown:** a 503 from the API (no database yet) or a connection failure or timeout becomes `JobCatalogUnavailableException`; the page shows its message (the API's own text for 503, "The API is not reachable at … Start JobFetchProbe.Api" otherwise) instead of the table or the job.
+- **Layout** (`Pages/Shared/_Layout.cshtml`): a CSS grid with a 216 px menu column (logo `img/logo.png` 64×64 shown at 32 px, "Job Fetch Probe", items Overview and Acquire; the page sets `ViewData["Nav"]` to mark the active item) and the content column. Below 900 px the menu shrinks to icons and the details pane covers the table.
+- **`/`** (`Pages/Index`, Overview): `GET api/JobCatalog?page=p&pageSize=25`. `p` below 1 is sent as 1 (the API would answer 400); a page past the end is corrected by the API, and the pager uses the page it returns. Jobs are ordered by the API (newest job IDs first). Columns: Title (link), Company, Location, Posted, Status (coloured tag per status). Footer: "Showing a–b of n jobs", ‹, the first and last page, the current page with its neighbours, gaps as "…", ›. Page links keep the selected job.
+- **Details pane** (`/?p=&job=<id>`): `GET api/JobCatalog/{id}` as well; the selected row is highlighted. Shows ✕ (back to `/?p=`), `#<id>`, status, title, company · location, "Open the job page ↗" (`Url`), then label–value rows: Job ID, Posted, Employment type, every stored detail, First seen, Description read, and Last attempt / Last error when there is one; then the description (line breaks kept), or a note that it is not read yet. An unknown ID shows "There is no job … in the database." with status 404.
+- **Divider and rows** (`wwwroot/js/split.js`, the only script): the divider between table and pane (`role="separator"`, focusable) is dragged with the pointer or moved with the arrow keys (Shift for larger steps); the pane is 280 px or wider and the table keeps at least 480 px. The width is stored in `localStorage` (`jobfetchprobe.paneWidth`); double-click resets it to 440 px. A click anywhere on a row follows the row's link. Without the script everything works except dragging. On a narrow table, container queries hide Posted (below 760 px) and Location (below 620 px).
+- **`/acquire`** (`Pages/Acquire`): three steps explaining acquisition (save search pages into `input`, run the console app, see the result in Overview). No data.
+- **`/jobs/{id}`** (`Pages/Job`): redirects (302) to `/?p=&job={id}`, so old links keep working.
+- **Styles:** `wwwroot/css/site.css`, light theme only: grey background `#f6f7f9`, white cards with `#e5e7eb` borders and 12 px corners, green accent `#16a34a`; status tags Read green, Pending indigo, Blocked orange, Failed red, Gone grey. Static files are served with `MapStaticAssets`.
+
+## API (`JobFetchProbe.Api`)
+
+ASP.NET Core controllers, read-only. `dotnet run --project src/JobFetchProbe.Api` → <http://localhost:5081>. Configuration: `Paths:DataRoot` in its own `appsettings.json` (`DataPaths` derives `Database:Path` as for the console app), `AddJobCatalog` (Data) and `AddJobRetriever()` (Services). It is the web app's only source of data. `JobFetchProbe.Api.http` holds sample requests.
+
+`JobCatalogController` (`[ApiController]`, route `api/JobCatalog`, JSON with camelCase names) depends only on `IJobRetriever`:
+
+| Action | Request | Responses |
+| --- | --- | --- |
+| `GetPage` | `GET api/JobCatalog?page=&pageSize=` | `200 JobSummaryPage` (`IJobRetriever.GetPageAsync`): `jobs[]` (`jobId`, `title`, `company`, `location`, `posted`, `status`), `page`, `pageSize`, `total`, `totalPages`. Defaults `page=1`, `pageSize=25`. `[Range]` validation: `page` ≥ 1, `pageSize` 1–100, else `400 ValidationProblemDetails`. A page past the end is clamped to the last page (the `page` field says which). |
+| `GetJob` | `GET api/JobCatalog/{jobId}` | `200 StoredJob` (`IJobRetriever.GetJobAsync`): `jobId`, `url`, `title`, `company`, `location`, `posted`, `employmentType`, `details[]` (`label`, `value`), `description`, `status`, `lastError`, `firstSeenAt`, `retrievedAt`, `lastAttemptAt`. `404 ProblemDetails` if unknown. |
+
+Both return `503 ProblemDetails` ("No database yet", `application/problem+json`) while the database file does not exist.
+
+`JobRetriever` (Services/Catalog, singleton, registered by `AddJobRetriever()`) holds the reading rules: `DefaultPageSize` 25, `MaxPageSize` 100 (the controller's `[Range]` uses these), `ArgumentOutOfRangeException` for a page below 1 or a page size out of range, the job ID trimmed and an empty ID treated as unknown (null → 404). Before reading it checks `IJobCatalog.IsAvailable`, which the data layer answers (`SqliteJobCatalog`: the database file exists); if not, it throws `JobStoreUnavailableException`. `JobStoreUnavailableHandler` (`IExceptionHandler`, with `AddProblemDetails` and `UseExceptionHandler`) turns that exception into the 503 for every endpoint, so the controller has no database check. In Development, `GET openapi/v1.json` serves the OpenAPI 3.1 description (`AddOpenApi` / `MapOpenApi`), with the response types declared by `[ProducesResponseType]`.
 
 ## Infrastructure
 
@@ -293,9 +325,11 @@ Result rules:
 
 Singleton. Reads the file as text. If it is a Chrome view-source save (contains `line-gutter-backdrop` and `<td class="line-content">`), the original HTML is rebuilt from the `line-content` cells: tags removed, entities decoded, one line per cell. The wrapper's `<!-- saved from url=… -->` note is kept as the first line, so the page's address is still known.
 
+## Data (`JobFetchProbe.Data`)
+
 ### Database (`JobsDbContext`)
 
-One SQLite file at `Database:Path` (`<DataRoot>\database\jobs.db`), through EF Core 10. Each table is configured in its own `IEntityTypeConfiguration<T>` class (`Database/Configurations`); `OnModelCreating` only calls `ApplyConfigurationsFromAssembly`.
+One SQLite file at `Database:Path` (`<DataRoot>\database\jobs.db`), through EF Core 10. Each table is configured in its own `IEntityTypeConfiguration<T>` class (`Configurations/`); `OnModelCreating` only calls `ApplyConfigurationsFromAssembly`.
 
 ```text
 Jobs            JobId PK · Url · Title · Company · Location · Posted · EmploymentType · Description · ParsedFrom
@@ -308,11 +342,12 @@ Listings        BatchId PK · CreatedAt
 
 - **One row per job**, however many listings show it; `ListingJobs` keeps what each card showed.
 - **Contexts:** `IDbContextFactory<JobsDbContext>` (singleton factory); every repository call opens and disposes its own context, so nothing holds a connection between calls.
-- **Repositories:** `SqliteBatchRepository` (`IBatchRepository`, step 1) and `SqliteJobRepository` (`IJobRepository`, step 2).
-- **Migrations** (`Database/Migrations`), applied at start-up: `InitialCreate`; `RemoveSearchesAndListingProgress` (drops the tables and columns of the removed search command and listing-based details step). `DesignTimeJobsDbContextFactory` lets the EF tools build the model without starting the app. After changing the rows or their configuration:
+- **Repositories** (`Repositories/`): `SqliteBatchRepository` (`IBatchRepository`, step 1), `SqliteJobRepository` (`IJobRepository`, step 2) and `SqliteJobCatalog` (`IJobCatalog`, read-only, for the API). They return models; no entity leaves the project.
+- **Migration namespace:** `JobFetchProbe.Data.Migrations`. EF Core identifies an applied migration by its ID in `__EFMigrationsHistory`, not by namespace, so databases created before the move to this project are not migrated again.
+- **Migrations** (`Migrations/`), applied at start-up: `InitialCreate`; `RemoveSearchesAndListingProgress` (drops the tables and columns of the removed search command and listing-based details step). `DesignTimeJobsDbContextFactory` lets the EF tools build the model without starting the app. After changing the rows or their configuration:
 
   ```sh
-  dotnet ef migrations add <Name> --project src/JobFetchProbe.Infrastructure --startup-project src/JobFetchProbe.Console --output-dir Database/Migrations
+  dotnet ef migrations add <Name> --project src/JobFetchProbe.Data --startup-project src/JobFetchProbe.Console --output-dir Migrations
   ```
 
 - EF Core's own log lines are filtered out (`Microsoft.EntityFrameworkCore` → `None`); a database failure prints `Database error: …` and exits with 3.
@@ -342,7 +377,7 @@ Validation runs when the settings are first used. A failure prints `Configuratio
 
 ## Dependency injection
 
-Console: `AddServices()` (Services) and `AddInfrastructure(IConfiguration)` (Infrastructure). Web: `AddJobCatalog(IConfiguration)` only (database settings, context factory, `IJobCatalog` → `SqliteJobCatalog`); both share the private `AddDatabase`. The console classes are singletons; `InboxConsole` and `DetailsConsole` create one DI scope per step.
+Console: `AddServices()` (Services), `AddInfrastructure(IConfiguration)` (Infrastructure: HTTP client, saved pages, input folder) and `AddJobStore(IConfiguration)` (Data: database settings, context factory, `IBatchRepository`, `IJobRepository`). Api: `AddJobRetriever()` (Services: `IJobRetriever` → `JobRetriever`) and `AddJobCatalog(IConfiguration)` (Data: database settings, context factory, `IJobCatalog` → `SqliteJobCatalog`). Web: `JobCatalogApiSettings` and the typed client `IJobCatalogClient` only. Both Data methods share the private `AddDatabase`; the catalog's connection is opened with `Mode=ReadOnly`, so the API can neither change the database nor create it. The console classes are singletons; `InboxConsole` and `DetailsConsole` create one DI scope per step.
 
 | Registration | Lifetime |
 | --- | --- |
@@ -408,8 +443,9 @@ The build is acceptable when:
 9. Saving the same search page again creates a new listing but sends no requests: its jobs are already `Read`.
 10. A database made by an earlier version is upgraded at start-up and keeps its jobs.
 11. A bad setting exits with 2; a file that is not a database exits with 3.
-12. The web app lists every job, 25 per page, newest IDs first; clicking one shows its details and description; an unknown ID gives 404; without a database it shows a message and creates nothing.
-13. The code contains no cookie handling, proxy settings, quick retries, or browser automation.
+12. The web app lists every job, 25 per page, newest IDs first; clicking a row shows its details and description in a pane whose divider can be dragged; an unknown ID gives 404; it reads only through the API; without a database it shows the API's message, and without the API it says the API is not reachable.
+13. The API returns a `JobSummaryPage` for `GET api/JobCatalog?page=&pageSize=` and a `StoredJob` for `GET api/JobCatalog/{jobId}`; out-of-range values give 400, an unknown job 404, a missing database 503 (and nothing is created).
+14. The code contains no cookie handling, proxy settings, quick retries, or browser automation.
 
 ## Not in this build
 

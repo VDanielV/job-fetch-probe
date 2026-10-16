@@ -1,0 +1,33 @@
+@page
+@model AcquireModel
+@{
+    ViewData["Title"] = "Acquire";
+    ViewData["Nav"] = "Acquire";
+}
+
+<header class="page-head">
+    <div>
+        <h1>Acquire</h1>
+        <p>How new jobs get into the database. For now this happens outside the web app, with the console app.</p>
+    </div>
+</header>
+
+<div class="content">
+    <ol class="steps">
+        <li>
+            <strong>Save search result pages</strong>
+            In your browser, search for jobs and save each results page (Save page as → Webpage, Complete) into the
+            <code>input</code> folder of your data folder (<code>Paths:DataRoot</code>, see the README).
+        </li>
+        <li>
+            <strong>Run the console app</strong>
+            <code>dotnet run --project src/JobFetchProbe.Console</code>. Step 1 stores every job link from the saved pages
+            and moves them to <code>input\archived</code>; step 2 reads each new job's description, one at a time.
+        </li>
+        <li>
+            <strong>See the result</strong>
+            Open <a class="link" asp-page="/Index">Overview</a>: the new jobs are there. Reload the page
+            while the console app runs to see descriptions arrive.
+        </li>
+    </ol>
+</div>

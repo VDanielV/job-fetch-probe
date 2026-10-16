@@ -1,7 +1,7 @@
 using JobFetchProbe.Console;
+using JobFetchProbe.Data;
+using JobFetchProbe.Data.Configuration;
 using JobFetchProbe.Infrastructure;
-using JobFetchProbe.Infrastructure.Configuration;
-using JobFetchProbe.Infrastructure.Database;
 using JobFetchProbe.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -26,7 +26,8 @@ var dataRoot = DataPaths.AddDataRootDefaults(builder.Configuration);
 
 builder.Services
     .AddServices()
-    .AddInfrastructure(builder.Configuration);
+    .AddInfrastructure(builder.Configuration)
+    .AddJobStore(builder.Configuration);
 
 // EF Core logs failed commands itself; the app reports database errors in one line instead (exit code 3).
 builder.Logging.AddFilter("Microsoft.EntityFrameworkCore", LogLevel.None);
@@ -41,6 +42,7 @@ try
 {
     if (dataRoot is not null)
     {
+        //TODO: This has nothing to do with the Data as in database, this is the acquisition of the data, so maybe rename the class to InputPaths or something. But for now, keep it as is.
         DataPaths.CreateFolders(dataRoot);
         ConsoleLog.Info($"Data folder: {dataRoot}");
     }
