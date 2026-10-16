@@ -1,6 +1,6 @@
 using JobFetchProbe.Infrastructure.Details;
-using JobFetchProbe.Models;
-using JobFetchProbe.Services.Abstractions;
+using JobFetchProbe.Models.Details;
+using JobFetchProbe.Models.Jobs;
 using JobFetchProbe.Services.Details;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -8,38 +8,15 @@ using Microsoft.Extensions.Options;
 namespace JobFetchProbe.Console;
 
 /// <summary>
-/// The details step on the console: reads every job of a listing, one by one, and stores all their descriptions
-/// in one file. Prints the plan, each job with progress and time left, every circuit breaker change, and a
-/// countdown while the circuit is open. Ctrl+C stops after the current job; the next run continues from there.
+/// Step 2 on the console: reads every job in the database without a description, one by one, and stores each
+/// result. Prints the plan, each job with progress and time left, every circuit breaker change, and a countdown
+/// while the circuit is open. Ctrl+C stops after the current job; the next run continues from there.
 /// </summary>
-public sealed class DetailsConsole(IServiceScopeFactory scopes, IOptions<DetailsSettings> settings, IListingStore listings)
+public sealed class DetailsConsole(IServiceScopeFactory scopes, IOptions<DetailsSettings> settings)
 {
-    public const string Command = "details";
-
-    public bool RunAfterInbox => settings.Value.RunAfterInbox;
-
-    public static bool IsDetails(string input) =>
-        input.Equals(Command, StringComparison.OrdinalIgnoreCase) ||
-        input.StartsWith(Command + " ", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>Runs "details", "details &lt;batch ID&gt;" or "details &lt;listing.json&gt;" as typed at the prompt.</summary>
-    public Task<DetailsRunResult?> HandleLineAsync(string line) =>
-        RunAsync(line.Length > Command.Length ? line[Command.Length..].Trim().Trim('"') : null);
-
-    /// <param name="listingFile">Listing to read (file, batch ID or stored location); null means the newest one.</param>
-    public async Task<DetailsRunResult?> RunAsync(string? listingFile)
+    public async Task<DetailsRunResult> RunAsync()
     {
-        ConsoleLog.Heading("Step 2: job descriptions");
-
-        var typed = listingFile;
-        listingFile = string.IsNullOrWhiteSpace(typed) ? listings.FindLatest() : listings.Resolve(typed);
-        if (listingFile is null)
-        {
-            ConsoleLog.Warn(string.IsNullOrWhiteSpace(typed)
-                ? "No listing found. Run the inbox step first, or give one: details <yyyyMMdd_HHmmss>"
-                : $"Listing not found: {typed}");
-            return null;
-        }
+        ConsoleLog.Heading("Step 2: job links → job descriptions");
 
         var delay = TimeSpan.FromSeconds(settings.Value.DelaySeconds);
         var breaker = settings.Value.CircuitBreaker.ToOptions();
@@ -47,10 +24,10 @@ public sealed class DetailsConsole(IServiceScopeFactory scopes, IOptions<Details
         using var cts = new CancellationTokenSource();
         ConsoleCancelEventHandler onCancel = (_, e) =>
         {
-            e.Cancel = true; // keep the process alive so progress is saved
+            e.Cancel = true; // keep the process alive so the summary is printed
             if (!cts.IsCancellationRequested)
             {
-                ConsoleLog.Warn("Ctrl+C: stopping after the current job, progress is kept…");
+                ConsoleLog.Warn("Ctrl+C: stopping after the current job, everything read so far is kept…");
                 cts.Cancel();
             }
         };
@@ -60,13 +37,8 @@ public sealed class DetailsConsole(IServiceScopeFactory scopes, IOptions<Details
         {
             using var scope = scopes.CreateScope();
             var service = scope.ServiceProvider.GetRequiredService<IDetailsService>();
-            var progress = new SyncProgress<DetailsEvent>(e => Print(e, listingFile, breaker));
-            return await service.RunAsync(listingFile, delay, breaker, progress, cts.Token);
-        }
-        catch (InvalidDataException ex)
-        {
-            ConsoleLog.Bad(ex.Message);
-            return null;
+            var progress = new SyncProgress<DetailsEvent>(e => Print(e, breaker));
+            return await service.RunAsync(delay, breaker, progress, cts.Token);
         }
         finally
         {
@@ -74,15 +46,19 @@ public sealed class DetailsConsole(IServiceScopeFactory scopes, IOptions<Details
         }
     }
 
-    private static void Print(DetailsEvent e, string listingFile, CircuitBreakerOptions breaker)
+    private static void Print(DetailsEvent e, CircuitBreakerOptions breaker)
     {
         switch (e.Kind)
         {
             case DetailsEventKind.Started:
-                ConsoleLog.Info($"Listing {Path.GetFileName(listingFile)}: {e.Listed} jobs, {e.AlreadyDone} already stored, {e.ToRead} to read.");
-                if (e.ToRead > 0)
+                if (e.ToRead == 0)
+                {
+                    ConsoleLog.Info("Every job in the database already has its description. Nothing to read.");
+                }
+                else
                 {
                     var estimate = TimeSpan.FromSeconds(e.ToRead * ((e.Wait ?? TimeSpan.Zero).TotalSeconds + 1));
+                    ConsoleLog.Info($"{e.ToRead} job(s) without a description in the database.");
                     ConsoleLog.Info($"One request every {ConsoleLog.Duration(e.Wait ?? TimeSpan.Zero)}, about {ConsoleLog.Duration(estimate)} in total if the site keeps answering.");
                     ConsoleLog.Info($"Circuit breaker: opens on a refusal or {breaker.FailureThreshold} failures in a row, " +
                                     $"waits {ConsoleLog.Duration(breaker.Cooldown)} (doubling, max {ConsoleLog.Duration(breaker.MaxCooldown)}), " +
@@ -91,20 +67,23 @@ public sealed class DetailsConsole(IServiceScopeFactory scopes, IOptions<Details
                 break;
 
             case DetailsEventKind.Job:
-                var percent = e.Listed > 0 ? 100.0 * e.Index / e.Listed : 100;
+                var percent = e.Total > 0 ? 100.0 * e.Index / e.Total : 100;
                 var eta = e.Eta is { } t && e.ToRead > 0 ? $", ~{ConsoleLog.Duration(t)} left" : string.Empty;
-                var head = $"[{e.Index,4}/{e.Listed}] {percent,3:0}%";
+                var head = $"[{e.Index,4}/{e.Total}] {percent,3:0}%";
                 var tail = $"(ok {e.Fetched}, failed {e.Failed}, {e.ToRead} to go{eta})";
                 switch (e.Status)
                 {
                     case JobResultStatus.Read:
-                        ConsoleLog.Good($"{head}  ok       {e.Listing?.JobId}  {Short(e.Title ?? e.Listing?.Title, 50)} · {Short(e.Listing?.Company, 30)}  {tail}");
+                        ConsoleLog.Good($"{head}  ok       {e.Job?.JobId}  {Short(e.Title ?? e.Job?.Title, 50)} · {Short(e.Job?.Company, 30)}  {tail}");
                         break;
                     case JobResultStatus.Blocked:
-                        ConsoleLog.Bad($"{head}  REFUSED  {e.Listing?.JobId}  {tail}");
+                        ConsoleLog.Bad($"{head}  REFUSED  {e.Job?.JobId}  {tail}");
+                        break;
+                    case JobResultStatus.Failed when e.Gone:
+                        ConsoleLog.Warn($"{head}  gone     {e.Job?.JobId}  the job page no longer exists; not tried again  {tail}");
                         break;
                     default:
-                        ConsoleLog.Warn($"{head}  failed   {e.Listing?.JobId}  {Short(e.Message, 60)}  {tail}");
+                        ConsoleLog.Warn($"{head}  failed   {e.Job?.JobId}  {Short(e.Message, 60)}  {tail}");
                         break;
                 }
                 break;
@@ -131,7 +110,7 @@ public sealed class DetailsConsole(IServiceScopeFactory scopes, IOptions<Details
 
             case DetailsEventKind.Stopped:
                 ConsoleLog.Bad($"Stopped: {e.Message}");
-                ConsoleLog.Info($"{e.ToRead} job(s) not tried yet. Run 'details' later to continue; jobs already stored are skipped.");
+                ConsoleLog.Info($"{e.ToRead} job(s) not tried in this run. The next run starts with them; jobs already stored are not asked again.");
                 break;
         }
     }

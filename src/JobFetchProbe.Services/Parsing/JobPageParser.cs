@@ -1,7 +1,7 @@
+using JobFetchProbe.Models.Jobs;
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using JobFetchProbe.Models;
 
 namespace JobFetchProbe.Services.Parsing;
 

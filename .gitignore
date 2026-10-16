@@ -7,12 +7,10 @@ obj/
 *.user
 
 # Data does not belong in the repository: it lives under Paths:DataRoot
-# (C:\Code\job-fetch-probe-data, next to the repository; see README "Folders").
+# (C:\Code\job-fetcher\job-fetch-probe-data, next to the repository; see README "Folders").
 # These lines only catch data written here by mistake, e.g. a folder setting pointed inside.
 data/
-output/
 *.db
 *.db-journal
 *.db-wal
 *.db-shm
-*.saved.html

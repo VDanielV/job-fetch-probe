@@ -1,4 +1,4 @@
-using JobFetchProbe.Models;
+using JobFetchProbe.Models.Jobs;
 using JobFetchProbe.Services.Abstractions;
 
 namespace JobFetchProbe.Infrastructure.Http;

@@ -1,19 +1,12 @@
 # Spec: JobFetchProbe
 
-.NET 10 console app with four steps:
+.NET 10 console app that runs one flow and exits:
 
-- **Job step:** reads one job posting from a link or a saved page, prints it, and stores it as `<JobId>.json`.
-- **Search step:** reads one search results page from a link or a saved page, prints the jobs it lists, and stores their links as `<SearchId>.json`.
-- **Inbox step:** reads every saved search page in an inbox folder, one by one, stores all their jobs together as `<yyyyMMdd_HHmmss>.json`, and moves each page read to an archive folder. Runs at start-up and on demand.
-- **Details step:** reads the jobs of an inbox listing one by one with the job step's code, politely and behind a circuit breaker, and stores all their descriptions in one `<yyyyMMdd_HHmmss>.json`.
+1. **Step 1, saved search pages → job links.** Reads every search results page saved into the input folder, stores the job links they contain in a SQLite database, and moves each page read to the archive folder.
+2. **Step 2, job links → job descriptions.** Reads every job in the database without a description, one at a time, politely and behind a circuit breaker, and stores each description, its details and the job's status.
+3. **Summary** with the totals.
 
-At start-up and with `inbox`, the inbox and details steps run as one process: inbox → listing → descriptions → a summary with the totals.
-
-Everything the steps store goes either to JSON files or to one SQLite database, chosen by `Storage:Provider` (see [Storage](#storage)). The steps behave the same with both.
-
-Each step was added alongside the earlier ones; their behaviour is unchanged.
-
-This spec describes the current code. It follows [`plan.md`](plan.md). The original probe spec is kept in Git history under the tag `probe-v1` (`docs/spec.md` there).
+There are no commands, options or arguments. A separate, read-only web app (`JobFetchProbe.Web`) shows the stored jobs. This spec describes the current code. It follows [`plan.md`](plan.md). The original probe spec is kept in Git history under the tag `probe-v1`.
 
 ## Solution layout
 
@@ -21,158 +14,188 @@ This spec describes the current code. It follows [`plan.md`](plan.md). The origi
 job-fetch-probe/
   JobFetchProbe.sln
   Directory.Build.props            net10.0, nullable, implicit usings
+  nuget.config                     nuget.org only
   src/
-    JobFetchProbe.Models/
-      JobPosting.cs  JobDetail.cs  FetchedPage.cs  JobResult.cs
-      JobListing.cs  JobSearch.cs  SearchResult.cs                       (search step)
-      JobSearchBatch.cs  InboxRunResult.cs                               (inbox step)
-      JobDetailsBatch.cs  DetailsRunResult.cs                            (details step)
+    JobFetchProbe.Models/          one type per file, grouped by step; namespace = folder
+      Jobs/      JobPosting.cs  JobDetail.cs  FetchedPage.cs  JobResult.cs  JobResultStatus.cs
+      Search/    JobListing.cs  JobSearch.cs  SearchResult.cs
+      Inbox/     JobSearchBatch.cs  BatchSource.cs  InboxRunResult.cs  InboxFileResult.cs  InboxProgress.cs
+      Details/   DetailsRunResult.cs  DetailsEvent.cs  DetailsEventKind.cs
+      Catalog/   JobSummary.cs  JobSummaryPage.cs  StoredJob.cs                          (web app)
     JobFetchProbe.Services/
-      IJobService.cs  JobService.cs  DependencyInjection.cs
-      Abstractions/  IPageFetcher.cs  ISavedPageReader.cs  IJobRepository.cs  ISearchRepository.cs
-                     IInboxFolder.cs  IBatchRepository.cs  IListingStore.cs  IDetailsRepository.cs
+      DependencyInjection.cs  IJobService.cs  JobService.cs
+      Abstractions/  IPageFetcher.cs  ISavedPageReader.cs  IInboxFolder.cs  IBatchRepository.cs  IJobRepository.cs
+                     IJobCatalog.cs                                                    (web app)
       Parsing/       IJobPageParser.cs  JobPageParser.cs  JobIdResolver.cs
-      Search/        ISearchService.cs  SearchService.cs  ISearchPageParser.cs  SearchPageParser.cs
-                     ParsedSearch.cs  SearchIdResolver.cs  SearchDependencyInjection.cs
-      Inbox/         IInboxService.cs  InboxService.cs  InboxDependencyInjection.cs
-      Details/       IDetailsService.cs  DetailsService.cs  CircuitBreaker.cs  DetailsDependencyInjection.cs
+      Search/        ISearchService.cs  SearchService.cs  ISearchPageParser.cs  SearchPageParser.cs  ParsedSearch.cs
+      Inbox/         IInboxService.cs  InboxService.cs                                       (step 1)
+      Details/       IDetailsService.cs  DetailsService.cs                                   (step 2)
+                     CircuitBreaker.cs  CircuitBreakerOptions.cs  CircuitState.cs
     JobFetchProbe.Infrastructure/
-      DependencyInjection.cs
-      Http/     HttpPageFetcher.cs  HttpClientSettings.cs
-      Files/    SavedPageReader.cs
-      Storage/  JsonJobRepository.cs  OutputSettings.cs  StorageSettings.cs
-      Database/ JobsDbContext.cs  Rows.cs  JobRowMapping.cs  SqliteLocations.cs  DatabaseDependencyInjection.cs
-                SqliteJobRepository.cs  SqliteSearchRepository.cs  SqliteBatchRepository.cs
-                SqliteListingStore.cs  SqliteDetailsRepository.cs  DesignTimeJobsDbContextFactory.cs
-                Migrations/  <timestamp>_InitialCreate.cs (+ .Designer.cs)  JobsDbContextModelSnapshot.cs
-      Search/   JsonSearchRepository.cs  SearchSettings.cs  SearchDependencyInjection.cs
-      Inbox/    InboxFolder.cs  JsonBatchRepository.cs  InboxSettings.cs  InboxDependencyInjection.cs
-      Details/  JsonListingStore.cs  JsonDetailsRepository.cs  DetailsSettings.cs  DetailsDependencyInjection.cs
+      DependencyInjection.cs   AddInfrastructure (console) · AddJobCatalog (web)
+      Configuration/  DataPaths.cs
+      Http/      HttpPageFetcher.cs  HttpClientSettings.cs
+      Files/     SavedPageReader.cs
+      Inbox/     InboxFolder.cs  InboxSettings.cs
+      Details/   DetailsSettings.cs  CircuitBreakerSettings.cs
+      Database/  JobsDbContext.cs  DatabaseSettings.cs  DatabaseInitializer.cs  JobRowMapping.cs
+                 DesignTimeJobsDbContextFactory.cs
+        Entities/        JobRow.cs  JobDetailRow.cs  JobStatus.cs  ListingRow.cs  ListingSourceRow.cs  ListingJobRow.cs
+        Configurations/  <Row>Configuration.cs, one IEntityTypeConfiguration per table
+        Repositories/    SqliteBatchRepository.cs  SqliteJobRepository.cs  SqliteJobCatalog.cs
+        Migrations/      InitialCreate, RemoveSearchesAndListingProgress, JobsDbContextModelSnapshot.cs
     JobFetchProbe.Console/
-      Program.cs  JobConsole.cs  SearchConsole.cs  InboxConsole.cs  DetailsConsole.cs
-      PipelineConsole.cs  ConsoleLog.cs  DataPaths.cs  appsettings.json
-  docs/       plan.md  spec.md
+      Program.cs  PipelineConsole.cs  InboxConsole.cs  DetailsConsole.cs
+      ConsoleLog.cs  SyncProgress.cs  appsettings.json
+    JobFetchProbe.Web/
+      Program.cs  appsettings.json  Properties/launchSettings.json
+      Pages/     Index.cshtml(.cs)  Job.cshtml(.cs)  _ViewImports.cshtml  _ViewStart.cshtml  Shared/_Layout.cshtml
+  docs/      plan.md  spec.md
 ```
 
-The repository holds code and documents only. Everything the app reads or writes is under `Paths:DataRoot`, a sibling folder outside the repository, so Git commands (`git clean -fdx`, a fresh clone) never touch it:
+The repository holds code and documents only. Everything the app reads or writes is under `Paths:DataRoot`, a folder outside the repository, so Git commands (`git clean -fdx`, a fresh clone) never touch it:
 
 ```text
-job-fetch-probe-data/              Paths:DataRoot (C:\Code\job-fetch-probe-data)
-  database/jobs.db                 Storage:Sqlite:Path
+job-fetch-probe-data/              Paths:DataRoot
+  database/jobs.db                 Database:Path
   input/                           Inbox:Folder: saved search pages to read
     archived/                      Inbox:ArchiveFolder: pages already read
-  pages/                           job pages saved by hand, given to the job step by path (not read automatically)
-  output/                          JSON storage only
-    jobs/                          Output:Folder: <JobId>.json
-    listings/                      Inbox:OutputFolder: <yyyyMMdd_HHmmss>.json
-    descriptions/                  Details:OutputFolder: <yyyyMMdd_HHmmss>.json
-    searches/                      Search:OutputFolder: <SearchId>.json
 ```
 
-`DataPaths` (Console) adds these paths as an in-memory configuration source **underneath** all others (index 0), computed from the final value of `Paths:DataRoot`. A folder set in `appsettings.json` or an environment variable therefore still wins on its own. Without `Paths:DataRoot`, each setting is used as given (or its code default). At start-up the app creates `input`, `input/archived` and `pages`, and prints `Data folder: …`; the database and output folders are created on first use.
+`DataPaths` (Infrastructure/Configuration, used by both apps) adds these three paths as an in-memory configuration source **underneath** all others (index 0), computed from the final value of `Paths:DataRoot`. A path set in `appsettings.json` or an environment variable therefore still wins on its own. Without `Paths:DataRoot`, each setting is used as given (or its code default). At start-up the app creates `input` and `input/archived` and prints `Data folder: …`.
+
+Conventions:
+
+- **One type per file**, the file named after the type; namespaces follow folders.
+- **Models are not database rows.** `JobFetchProbe.Models` holds the shapes every layer shares (immutable records). The tables have their own classes in `Infrastructure/Database/Entities` (mutable, with keys, positions and status columns, suffix `Row`), used only by the database code and copied to and from the models in `JobRowMapping`.
 
 ## Dependencies
 
 ```text
 Console ──► Services ──► Models
    │            ▲
-   └──► Infrastructure (implements the Services interfaces)
+   └──► Infrastructure (implements the Services interfaces) ◄── Web
 ```
 
 | Project | References | Packages |
 | --- | --- | --- |
 | Models | none | none |
 | Services | Models | `Microsoft.Extensions.DependencyInjection.Abstractions` 10.0.0 |
-| Infrastructure | Services | `Microsoft.Extensions.Http` 10.0.0, `Microsoft.Extensions.Options.ConfigurationExtensions` 10.0.0, `Microsoft.EntityFrameworkCore.Sqlite` 10.0.13 |
+| Infrastructure | Services | `Microsoft.Extensions.Configuration` 10.0.0, `Microsoft.Extensions.Http` 10.0.0, `Microsoft.Extensions.Options.ConfigurationExtensions` 10.0.0, `Microsoft.EntityFrameworkCore.Sqlite` 10.0.13 |
 | Console | Services, Infrastructure | `Microsoft.Extensions.Hosting` 10.0.0, `Microsoft.EntityFrameworkCore.Design` 10.0.13 (design time only, `PrivateAssets=all`) |
+| Web | Infrastructure | none (`Microsoft.NET.Sdk.Web`: ASP.NET Core shared framework) |
 
-Services must not use `HttpClient`, `File` or `Directory`. All outside access goes through the interfaces in `Services/Abstractions`. The search step reuses `IPageFetcher` and `ISavedPageReader` and adds `ISearchRepository`.
+Services never use `HttpClient`, files or the database directly; everything outside goes through `Services/Abstractions`.
 
-## Operator contract
+## Run
 
-```text
-job-fetch-probe                          prompt for links or files until 'exit'
-job-fetch-probe <job-link | file>        job step: read one job and exit
-job-fetch-probe search [<link | file>]   search step: read one search results page and exit
-                                         (no argument: Search:DefaultUrl)
-job-fetch-probe inbox                    whole process once and exit: inbox → details → summary
-job-fetch-probe details [<listing>]      details step for a listing (default: the newest) and exit;
-                                         <listing> is a batch ID (20261014_183201), a listing file name, or its path
-```
+`dotnet run --project src/JobFetchProbe.Console`, or the built `job-fetch-probe` executable. Arguments are ignored.
 
-At the prompt, `search`, or `search <link | file>`, runs the search step, `inbox` runs the whole process, and `details` or `details <listing.json>` runs the details step followed by the summary; any other input runs the job step as before.
+1. Build the host (content root = build output folder, so `appsettings.json` is always found), apply `DataPaths`, register services and infrastructure.
+2. Create the data folders; print `Data folder: …`.
+3. `InitializeDatabaseAsync`: create the database folder and file if missing, apply pending migrations; print `Database: …` (with `schema updated, N migration(s) applied` when it did).
+4. `PipelineConsole.RunAsync`: step 1, then step 2 (always, whatever step 1 found), then the summary.
 
-When `Inbox:ProcessOnStart` is true, every start of the app first runs the whole process (silently if the inbox is empty), then continues with the command or prompt. The `inbox` and `details` commands do not trigger it a second time. The details step runs after the inbox only when a listing was written and `Details:RunAfterInbox` is true.
-
-Run from the repository root with `dotnet run --project src/JobFetchProbe.Console [-- <args>]`.
-
-Input handling:
-
-- Leading and trailing spaces and surrounding double quotes are removed.
-- An absolute `http` or `https` URL is treated as a link. Anything else is treated as a file path.
-- `exit` (any case) or end of input ends the prompt.
-
-Exit codes:
-
-| Code | Meaning |
+| Exit code | Meaning |
 | --- | --- |
-| 0 | Interactive session ended, or the single input (job or search) was saved |
-| 1 | The single input was blocked or failed, or `search` was given no input and no `Search:DefaultUrl` is set, or `inbox` left a page in the inbox or a listed job without its description, or `details` ended with failed or pending jobs |
-| 2 | Configuration error (`OptionsValidationException`), including an unknown `Storage:Provider` |
-| 3 | Database error: the SQLite file is locked, read-only, damaged or not a database (`SqliteException`, `DbUpdateException`) |
+| 0 | Nothing left to do: no page kept in the input folder, and no job left to read (every job `Read` or `Gone`) |
+| 1 | Something is left for the next run: a page kept in the input folder, or jobs still `Pending`, `Blocked` or `Failed` |
+| 2 | Configuration error (`OptionsValidationException`) |
+| 3 | Database error: the file is locked, read-only, damaged or not a database (`SqliteException`, `DbUpdateException`) |
 
-## Models
+## Step 1: saved search pages → job links (`InboxService`)
 
-### `JobPosting` (record)
+1. **List** the files directly in `Inbox:Folder` matching `Inbox:Patterns` (`*.html`, `*.htm`), oldest first (last write time, then name). Subfolders, including the archive, are not read.
+2. **Read** each file with `ISearchService.ReadFileAsync` (no network):
+   - The page's address is its canonical link or `og:url`, else the browser's `<!-- saved from url=… -->` note. A page without any is rejected (or reported as a bot check if it is one).
+   - A page with no result cards of a known layout whose only job is the one selected in its address (`currentJobId`) is rejected: it holds no list. This is what a view-source save of LinkedIn's signed-in pages looks like (the list is loaded later by scripts); the message also mentions a possible layout change.
+   - A page with no job links is rejected; if it is a bot-check page, that is the reason given.
+3. **Merge** the jobs: a job already found in an earlier page of the same run is skipped (`JobId`), so the first page wins.
+4. If at least one page was read, **store** the listing with `IBatchRepository.SaveAsync`, in one transaction: a `Listings` row (`BatchId` = local time `yyyyMMdd_HHmmss`, `_2`, `_3`… if taken), one `ListingSources` row per page, one `ListingJobs` row per job (as its card showed it), and a `Pending` row in `Jobs` for every job not seen before. A job not read yet gets its title, company, location and URL updated from the card; a job already `Read` keeps its page data.
+5. Only after that, **archive** each page read: move it to `Inbox:ArchiveFolder`, together with the `<name>_files` folder the browser saves next to a "complete" page. If the archive already has that name, the moved file becomes `<name>_<yyyyMMdd_HHmmss><ext>` (then `_2`, `_3`…); nothing is overwritten.
 
-| Property | Type | Rule |
-| --- | --- | --- |
-| `JobId` | `string` | **Required.** See "Job ID" |
-| `SourceUrl` | `Uri` | **Required.** Absolute `http`/`https` address where the job can be reached |
-| `Title` | `string?` | |
-| `Company` | `string?` | |
-| `Location` | `string?` | |
-| `Posted` | `string?` | Text as shown on the page, or `datePosted` from JSON-LD |
-| `EmploymentType` | `string?` | From JSON-LD only |
-| `Details` | `IReadOnlyList<JobDetail>` | Labelled facts; empty list by default |
-| `Description` | `string?` | Plain text with paragraph and list breaks |
-| `ParsedFrom` | `string` | Which layout matched |
-| `RetrievedAt` | `DateTimeOffset` | UTC time of the read |
+Pages that could not be read **stay in the input folder** with the reason printed, and are tried again on the next run. If the database cannot be written, the run ends with exit code 3 and nothing is archived.
 
-### Others
-
-| Type | Shape |
-| --- | --- |
-| `JobDetail` | `record (string Label, string Value)` |
-| `FetchedPage` | `record (int Status, Uri FinalUrl, string Html, bool Blocked, string? Error)` |
-| `JobResult` | `record (JobResultStatus Status, JobPosting? Job, string? SavedTo, string? Message)` with factories `Saved`, `Blocked`, `Failed` |
-| `JobResultStatus` | `Saved`, `Blocked`, `Failed` |
-
-## Services
-
-### `IJobService`
+### Search page parsing (`ISearchPageParser`, `SearchPageParser`)
 
 ```csharp
-Task<JobResult> FromUrlAsync(Uri url, CancellationToken ct = default);
-Task<JobResult> FromFileAsync(string path, CancellationToken ct = default);
+ParsedSearch Parse(string html, Uri pageUrl);
+record ParsedSearch(IReadOnlyList<JobListing> Jobs, string? Query, int? TotalResults, string ParsedFrom, bool LooksLikeChallenge);
 ```
 
-`FromUrlAsync`:
+Singleton. Three layouts, in order; the first that finds jobs wins:
 
-1. Non-`http`/`https` URL → `Failed`.
-2. Fetch with `IPageFetcher`. `Blocked` → `Blocked` with a message suggesting a saved page. `Error` → `Failed`.
-3. `SourceUrl` = the URL as given (query string kept).
-4. Job ID = from the URL, else from the page's canonical link, else the fallback.
-5. Parse, set `RetrievedAt`, save, return `Saved`.
+**1. LinkedIn public search page.** A card starts at any element with `data-entity-urn="urn:li:jobPosting:<id>"` (a `<div>` or an `<a>`) and ends where the next card starts. Repeated IDs are skipped.
 
-`FromFileAsync`:
+| Field | Element in the card |
+| --- | --- |
+| JobId | the `urn:li:jobPosting:<id>` value |
+| Url | first `href` to `/jobs/view/` whose job ID matches the card |
+| Title | `class="base-search-card__title"` |
+| Company | `class="base-search-card__subtitle"` |
+| Location | `class="job-search-card__location"` |
+| ListedAt | `<time class="job-search-card__listdate…" datetime="…">`, attributes in any order |
+| ParsedFrom | `LinkedIn public search page markup` |
 
-1. Read with `ISavedPageReader`. `FileNotFoundException`, `DirectoryNotFoundException` or `UnauthorizedAccessException` → `Failed`.
-2. `SourceUrl` = the page's canonical link, else its `og:url`, if absolute `http`/`https`. If neither → `Failed`: *the saved page does not contain its own address*.
-3. Job ID = from the canonical link, else from the file name, else the fallback.
-4. Parse, set `RetrievedAt`, save, return `Saved`.
+Page level: `Query` from `class="results-context-header__query-search"` (else the address's `keywords` value, else the page title), `TotalResults` from `class="results-context-header__job-count"`. Class names were taken from one saved search page in October 2026.
 
-Lifetime: transient. Resolved inside a new DI scope for every input.
+**2. LinkedIn signed-in search page** (`/jobs/search-results/`, saved with "Save page as → Webpage, Complete"). Its class names are generated (`hv4k0m …`) and change, so they are not used. A card starts at `componentkey="job-card-component-ref-<id>"` (the key is on two nested elements; repeats are skipped) and ends where the next card starts (the last card: at most 20,000 characters). Repeated IDs are skipped.
+
+| Field | Source in the card |
+| --- | --- |
+| JobId | the `job-card-component-ref-<id>` value |
+| Url | a `/jobs/view/` link in the card whose ID matches, else `https://www.linkedin.com/jobs/view/<id>/` (the cards link back to the search, not to the job) |
+| Title | first `<p>`: it holds the title twice, first for screen readers with a label such as "(Empleo verificado)", then the visible title; the visible one is used |
+| Company | second `<p>` |
+| Location | third `<p>` (later ones, such as "Visto" or a salary, are ignored) |
+| ListedAt | not shown on these cards (null) |
+| ParsedFrom | `LinkedIn signed-in search page markup` |
+
+Page level: `Query` from the address's `keywords` value, `TotalResults` from a paragraph reading `<n> resultados` / `<n> results`. Taken from one saved page in October 2026.
+
+**3. Generic fallback.** Every `<a href>` to a `/jobs/view/` page whose path ends in a job ID (6 or more digits), resolved against the page address, query removed, unique by ID; the link text is the title. `ParsedFrom` = `job links in page (no LinkedIn result cards found)`.
+
+**Bot-check detection** (`LooksLikeChallenge`), only when no jobs were found: a `<meta http-equiv="refresh">` or LinkedIn's challenge-cookie script (`ccookie`) anywhere in the page, or the words `captcha` or `security verification` in the visible text (not in scripts, which ordinary pages also contain). The page's script is never run.
+
+## Step 2: job links → job descriptions (`DetailsService`)
+
+1. **Work list:** `IJobRepository.GetUnreadAsync`: every job whose status is `Pending`, `Failed` or `Blocked`. Never-tried (`Pending`) jobs first, then by `FirstSeenAt`, then `JobId` (sorted in memory: SQLite cannot order by `DateTimeOffset`).
+2. For each job, in that order: wait `Details:DelaySeconds` since the previous request, then `IJobService.ReadUrlAsync(url)` (fetch + parse; the job keeps the listed `JobId`).
+3. **Store the outcome at once**, before the next job:
+   - read → `SaveDescriptionAsync`: page data, details and description stored, status `Read`, last error cleared (an earlier read is overwritten);
+   - HTTP 404 or 410 → `SaveFailureAsync(gone: true)`: status `Gone`, not tried again;
+   - refused → status `Blocked`; any other failure → status `Failed`; both with the message and time, tried again on the next run.
+   A stored description is never replaced by a later failure. Saving is never cancelled half-way.
+4. The run ends when the list is done, the circuit breaker stops it, or the user presses Ctrl+C (stops after the current request). Jobs not tried stay as they were and are first in line next time.
+
+### Status of a job (`Jobs.Status`)
+
+| Status | Set when | Tried by step 2 |
+| --- | --- | --- |
+| `Pending` | first listed by step 1 | yes, first |
+| `Read` | the page was read and stored | no |
+| `Blocked` | the site refused (401, 403, 429, 999, sign-in page) | yes, next run |
+| `Failed` | network error, timeout, 5xx, other non-success status | yes, next run |
+| `Gone` | HTTP 404 or 410 | no |
+
+### Circuit breaker (`CircuitBreaker`)
+
+| State | Meaning |
+| --- | --- |
+| Closed | Normal: one request every `DelaySeconds` |
+| Open | No requests at all until the cooldown has passed |
+| Half-open | One trial request decides: success or a neutral answer closes the circuit, anything else opens it again |
+
+- A **refusal** opens the circuit at once.
+- A **failure** (no answer, timeout, HTTP 5xx) counts; `FailureThreshold` in a row open the circuit. A success resets the count.
+- A **neutral** answer (e.g. 404) only affects that job.
+- Each opening waits `CooldownSeconds`, doubling on every further opening, capped at `MaxCooldownSeconds`. While waiting, the time left is reported every 30 s, in whole seconds rounded up (so the loop never wakes before the cooldown ends).
+- The trial request after a cooldown is the **same job** that opened the circuit, so no job is skipped.
+- When the circuit opens for the `StopAfterOpenings`-th time, the run **stops**. Nothing is retried quickly and the identity is never changed.
+
+### Reading a job page (`JobService`)
+
+`ReadUrlAsync(Uri)`: only `http`/`https`. A refusal or sign-in redirect → `Blocked`; another error → `Failed` with `could not fetch the page: …`; otherwise the page is parsed. Every result carries the HTTP status. The job ID comes from the URL, else the page's canonical link, else `job-yyyyMMdd-HHmmss`.
 
 ### Job ID (`JobIdResolver`)
 
@@ -180,10 +203,9 @@ Lifetime: transient. Resolved inside a new DI scope for every input.
 | --- | --- | --- |
 | URL path | `/jobs/view/(?:[^/]*?-)?(\d{6,})/?$` | `/jobs/view/4478111194/`, `/jobs/view/tecnico-…-sl-4478111194` |
 | Page | canonical link, else `og:url`, then the URL rule | `<link rel="canonical" href="…-4478111194">` |
-| File name | `jobs_view_(?:.*?-)?(\d{6,})` | `view-source_https___www.linkedin.com_jobs_view_4478111194.html` |
 | Fallback | `job-yyyyMMdd-HHmmss` (UTC) | `job-20261014-133911` |
 
-### Parsing (`IJobPageParser`, `JobPageParser`)
+### Job page parsing (`IJobPageParser`, `JobPageParser`)
 
 ```csharp
 JobPosting Parse(string html, string jobId, Uri sourceUrl);
@@ -230,6 +252,16 @@ Meta content is HTML-decoded twice (some sites double-escape).
 
 **HTML to text:** remove `script`, `style`, `noscript`, `svg`, `head` and comments; line break for `<br>` and closing `p`, `div`, `h1`–`h6`, `ul`, `ol`, `section`, `article`, `tr`; `- ` before each `<li>`; inline tags (`strong`, `b`, `em`, `i`, `u`, `span`, `a`, `small`, `mark`) removed without adding a space; other tags become a space; entities decoded; spaces collapsed; at most one blank line in a row.
 
+## Web app (`JobFetchProbe.Web`)
+
+ASP.NET Core Razor Pages, read-only. `dotnet run --project src/JobFetchProbe.Web` → <http://localhost:5080> (`Properties/launchSettings.json`).
+
+- **Configuration:** its own `appsettings.json` with the same `Paths:DataRoot`; `DataPaths.AddDataRootDefaults` derives `Database:Path` exactly as for the console app. EF Core logs at `Warning` and above.
+- **No writes, no migrations:** it only reads through `IJobCatalog`. If the database file does not exist, the table page says so and nothing is created. It can run while the console app writes (SQLite handles one writer and readers).
+- **`/`** (`Pages/Index`): `IJobCatalog.GetPageAsync(p, 25)`. Jobs are ordered by job ID, longest then highest first (LinkedIn IDs grow over time, so newest first; the database cannot sort by the stored dates). Paging (`Skip`/`Take`) runs in the database; `?p=` out of range is clamped to the first or last page. Columns: Title (link), Company, Location, Posted, Status. Pager: First, Previous, Next, Last, and "<n> jobs · page x of y".
+- **`/jobs/{id}`** (`Pages/Job`): `IJobCatalog.GetAsync(id)`, 404 if unknown. Shows title, company · location, status, a link to the job page (`Url`), Job ID, Posted, Employment type, every stored detail, First seen, Description read, and Last attempt / Last error when there is one; then the description (line breaks kept), or a note that it is not read yet. `?p=` is kept so "← All jobs" returns to the same table page.
+- **Styles:** a few CSS rules inline in `Pages/Shared/_Layout.cshtml`, light and dark (`color-scheme`); no scripts, no external files.
+
 ## Infrastructure
 
 ### HTTP (`HttpPageFetcher`)
@@ -259,406 +291,86 @@ Result rules:
 
 ### Saved pages (`SavedPageReader`)
 
-Singleton. Reads the file as text. If it is a Chrome view-source save (contains `line-gutter-backdrop` and `<td class="line-content">`), the original HTML is rebuilt from the `line-content` cells: tags removed, entities decoded, one line per cell.
+Singleton. Reads the file as text. If it is a Chrome view-source save (contains `line-gutter-backdrop` and `<td class="line-content">`), the original HTML is rebuilt from the `line-content` cells: tags removed, entities decoded, one line per cell. The wrapper's `<!-- saved from url=… -->` note is kept as the first line, so the page's address is still known.
 
-### Storage (`JsonJobRepository`)
+### Database (`JobsDbContext`)
 
-Singleton.
+One SQLite file at `Database:Path` (`<DataRoot>\database\jobs.db`), through EF Core 10. Each table is configured in its own `IEntityTypeConfiguration<T>` class (`Database/Configurations`); `OnModelCreating` only calls `ApplyConfigurationsFromAssembly`.
 
-- Folder: `Path.GetFullPath(Output:Folder)`, so a relative folder is resolved from the current directory. Created if missing.
-- File: `<JobId>.json`, with characters invalid in file names replaced by `_`. If it exists it is overwritten; no previous versions or backups are kept.
-- Format: `System.Text.Json`, web defaults (camelCase), indented, `UnsafeRelaxedJsonEscaping` so accents and emoji stay readable. `SourceUrl` is written as a string.
-
-```json
-{
-  "jobId": "4478111194",
-  "sourceUrl": "https://es.linkedin.com/jobs/view/t%C3%A9cnico-a-de-desarrollo-at-improving-logistics-consulting-sl-4478111194",
-  "title": "Técnico/a de Desarrollo",
-  "company": "Improving Logistics & Consulting S.L.",
-  "location": "Almussafes",
-  "posted": "Hace 23 horas",
-  "employmentType": null,
-  "details": [
-    { "label": "Nivel de antigüedad", "value": "Intermedio" },
-    { "label": "Tipo de empleo", "value": "Jornada completa" },
-    { "label": "Sectores", "value": "Transporte, logística, cadena de suministro y almacenamiento" },
-    { "label": "Applicants", "value": "25 solicitudes" }
-  ],
-  "description": "Somos una compañía especializada en servicios de Logística Integral, …",
-  "parsedFrom": "LinkedIn public job page markup",
-  "retrievedAt": "2026-10-14T13:39:11+00:00"
-}
+```text
+Jobs            JobId PK · Url · Title · Company · Location · Posted · EmploymentType · Description · ParsedFrom
+                RetrievedAt · Status · LastError · LastAttemptAt · FirstSeenAt
+  JobDetails    Id PK · JobId FK (cascade) · Position · Label · Value
+Listings        BatchId PK · CreatedAt
+  ListingSources  Id PK · BatchId FK (cascade) · Position · File · SourceUrl · Query · TotalResults · Jobs · NewJobs
+  ListingJobs     (BatchId, JobId) PK · Position · Url · Title · Company · Location · ListedAt   JobId FK → Jobs (restrict)
 ```
+
+- **One row per job**, however many listings show it; `ListingJobs` keeps what each card showed.
+- **Contexts:** `IDbContextFactory<JobsDbContext>` (singleton factory); every repository call opens and disposes its own context, so nothing holds a connection between calls.
+- **Repositories:** `SqliteBatchRepository` (`IBatchRepository`, step 1) and `SqliteJobRepository` (`IJobRepository`, step 2).
+- **Migrations** (`Database/Migrations`), applied at start-up: `InitialCreate`; `RemoveSearchesAndListingProgress` (drops the tables and columns of the removed search command and listing-based details step). `DesignTimeJobsDbContextFactory` lets the EF tools build the model without starting the app. After changing the rows or their configuration:
+
+  ```sh
+  dotnet ef migrations add <Name> --project src/JobFetchProbe.Infrastructure --startup-project src/JobFetchProbe.Console --output-dir Database/Migrations
+  ```
+
+- EF Core's own log lines are filtered out (`Microsoft.EntityFrameworkCore` → `None`); a database failure prints `Database error: …` and exits with 3.
 
 ## Configuration
 
-`src/JobFetchProbe.Console/appsettings.json`, copied to the build output. The host's content root is the build output folder, so the file is found however the app is started. Command-line arguments are not passed to configuration. Environment variables override settings (`Paths__DataRoot=D:\job-data`).
+`src/JobFetchProbe.Console/appsettings.json`, copied to the build output. Environment variables override settings (`Paths__DataRoot=D:\job-data`). Command-line arguments are not used.
 
 | Key | Default | Validation |
 | --- | --- | --- |
-| `Paths:DataRoot` | `C:\Code\job-fetch-probe-data` | none; when set, the folder keys marked † default to the layout above |
-| `Storage:Provider` | `Sqlite` (code default `Json`) | `Json` or `Sqlite`, any case |
-| `Storage:Sqlite:Path` † | `<DataRoot>\database\jobs.db` | not empty when the provider is `Sqlite` |
-| `Output:Folder` † | `<DataRoot>\output\jobs` | not empty |
-| `Search:OutputFolder` † | `<DataRoot>\output\searches` | not empty |
-| `Search:DefaultUrl` | `https://es.linkedin.com/jobs/.net-empleos-valencia` | empty, or an absolute `http`/`https` link |
+| `Paths:DataRoot` | `C:\Code\job-fetcher\job-fetch-probe-data` | none; when set, the keys marked † default to the layout above |
+| `Database:Path` † | `<DataRoot>\database\jobs.db` | not empty |
 | `Inbox:Folder` † | `<DataRoot>\input` | not empty |
 | `Inbox:ArchiveFolder` † | `<DataRoot>\input\archived` | not empty, different from `Inbox:Folder` |
-| `Inbox:OutputFolder` † | `<DataRoot>\output\listings` | not empty |
-| `Inbox:ProcessOnStart` | `true` | none |
-| `Details:OutputFolder` † | `<DataRoot>\output\descriptions` | not empty |
-| `Details:DelaySeconds` | `5` | 1 to 120; pause between two requests |
-| `Details:RunAfterInbox` | `true` | none |
-| `Details:CircuitBreaker:FailureThreshold` | `3` | 1 to 20; failures in a row that open the circuit |
-| `Details:CircuitBreaker:CooldownSeconds` | `300` | 1 to 14400; first wait while open |
-| `Details:CircuitBreaker:MaxCooldownSeconds` | `1800` | 1 to 86400; the wait doubles up to this |
-| `Details:CircuitBreaker:StopAfterOpenings` | `3` | 1 to 10; the run stops at this opening |
-| `Inbox:Patterns` | `*.html`, `*.htm` (code default, not in the file) | at least one |
+| `Inbox:Patterns` | `*.html`, `*.htm` (code default) | at least one |
+| `Details:DelaySeconds` | `5` | 1 to 120 |
+| `Details:CircuitBreaker:FailureThreshold` | `3` | 1 to 20 |
+| `Details:CircuitBreaker:CooldownSeconds` | `300` | 1 to 14400 |
+| `Details:CircuitBreaker:MaxCooldownSeconds` | `1800` | 1 to 86400 |
+| `Details:CircuitBreaker:StopAfterOpenings` | `3` | 1 to 10 |
 | `HttpClient:TimeoutSeconds` | `20` | 1 to 120 |
 | `HttpClient:UserAgent` | `JobFetchProbe/0.3 (personal study project)` | not empty |
 | `HttpClient:HandlerLifetimeMinutes` | `5` | none |
 | `Logging:LogLevel:Default` | `Warning` | none; keeps HttpClient request logs off the console |
 
-With `Sqlite`, the folder settings (`Output`, `Search:OutputFolder`, `Inbox:OutputFolder`, `Details:OutputFolder`) are still validated but not written to. `Inbox:Folder` and `Inbox:ArchiveFolder` are used with both providers.
-
 Validation runs when the settings are first used. A failure prints `Configuration error: …` and exits with 2.
 
 ## Dependency injection
 
+Console: `AddServices()` (Services) and `AddInfrastructure(IConfiguration)` (Infrastructure). Web: `AddJobCatalog(IConfiguration)` only (database settings, context factory, `IJobCatalog` → `SqliteJobCatalog`); both share the private `AddDatabase`. The console classes are singletons; `InboxConsole` and `DetailsConsole` create one DI scope per step.
+
 | Registration | Lifetime |
 | --- | --- |
-| `TimeProvider.System` | singleton (if not already registered) |
-| `IJobPageParser` → `JobPageParser` | singleton |
-| `IJobService` → `JobService` | transient |
-| `IPageFetcher` → `HttpPageFetcher` | typed client (transient, factory-managed handler) |
-| `ISavedPageReader` → `SavedPageReader` | singleton |
-| `IJobRepository` → `JsonJobRepository` | singleton |
-| `JobConsole` | singleton; creates a scope per input via `IServiceScopeFactory`; passes `search` lines to `SearchConsole` |
-| `ISearchPageParser` → `SearchPageParser` | singleton |
-| `ISearchService` → `SearchService` | transient (depends on the typed client) |
-| `ISearchRepository` → `JsonSearchRepository` | singleton |
-| `SearchConsole` | singleton; creates a scope per input |
-| `IInboxService` → `InboxService` | transient |
-| `IInboxFolder` → `InboxFolder` | singleton |
-| `IBatchRepository` → `JsonBatchRepository` | singleton |
-| `InboxConsole` | singleton; creates a scope per run |
-| `IDetailsService` → `DetailsService` | transient (depends on `IJobService`) |
-| `IListingStore` → `JsonListingStore` | singleton |
-| `IDetailsRepository` → `JsonDetailsRepository` | singleton |
-| `DetailsConsole`, `PipelineConsole` | singletons; `DetailsConsole` creates a scope per run |
-| `IDbContextFactory<JobsDbContext>` | singleton (Sqlite only); each repository call opens and disposes its own short-lived context |
-| `IJobRepository`, `ISearchRepository`, `IBatchRepository`, `IListingStore`, `IDetailsRepository` → `Sqlite…` | singletons; with Sqlite they **replace** the JSON registrations |
-
-Extension methods: `AddJobServices()` (Services), `AddInfrastructure(IConfiguration)` (Infrastructure); for the inbox step `AddInboxServices()` and `AddInboxInfrastructure(IConfiguration)` (both need the search step's registrations); for the details step `AddDetailsServices()` and `AddDetailsInfrastructure(IConfiguration)` (need the job step's registrations); `AddStorage(IConfiguration)` last, which with Sqlite swaps the five storage registrations for the database ones (`ServiceCollection.Replace`) and leaves the rest untouched; for the search step, in separate classes so the job step's registrations are untouched: `AddSearchServices()` (Services) and `AddSearchInfrastructure(IConfiguration)` (Infrastructure). `AddSearchInfrastructure` relies on `AddInfrastructure` for `IPageFetcher` and `ISavedPageReader`.
+| `TimeProvider.System` | singleton |
+| `IJobPageParser`, `ISearchPageParser` | singleton |
+| `IJobService`, `ISearchService`, `IInboxService`, `IDetailsService` | transient (they depend, directly or not, on the typed `HttpClient`, which must not be pinned by a singleton) |
+| `IPageFetcher` → `HttpPageFetcher` | typed client (factory-managed handler) |
+| `ISavedPageReader`, `IInboxFolder` | singleton |
+| `IDbContextFactory<JobsDbContext>` | singleton factory; short-lived contexts |
+| `IBatchRepository` → `SqliteBatchRepository`, `IJobRepository` → `SqliteJobRepository` | singleton |
+| `PipelineConsole`, `InboxConsole`, `DetailsConsole` | singleton |
 
 ## Console output
-
-```text
-Job ID:    4478111194
-Title:     Técnico/a de Desarrollo
-Company:   Improving Logistics & Consulting S.L.
-Location:  Almussafes
-Posted:    Hace 23 horas
-Nivel de antigüedad: Intermedio
-...
-(read from LinkedIn public job page markup)
-
-Description:
-...
-
-Saved to C:\Code\job-fetch-probe-data\output\jobs\4478111194.json
-```
-
-Empty fields are not printed. Blocked or failed inputs print one message line and nothing is saved.
-
-## Search step
-
-Reads the job links from one search results page and stores them in one JSON file per search. It reuses the job step's `IPageFetcher` (same typed `HttpClient`, same blocked-request rules) and `ISavedPageReader` (same view-source unwrapping).
-
-Only the jobs present in the page are read. The app does not request further result pages: LinkedIn loads them from its `/jobs-guest/` endpoints, which its `robots.txt` disallows. To include more jobs, scroll further in the browser before saving the page.
-
-### Models
-
-`JobListing` (record):
-
-| Property | Type | Rule |
-| --- | --- | --- |
-| `JobId` | `string` | **Required.** From the card's `urn:li:jobPosting:<id>`, or from the link |
-| `Url` | `Uri` | **Required.** The card's `/jobs/view/` link with query and fragment removed; if the card has none, `https://<host>/jobs/view/<JobId>/` |
-| `Title` | `string?` | |
-| `Company` | `string?` | |
-| `Location` | `string?` | |
-| `ListedAt` | `string?` | The card's `datetime` value, e.g. `2026-10-13` |
-
-`JobSearch` (record):
-
-| Property | Type | Rule |
-| --- | --- | --- |
-| `SearchId` | `string` | **Required.** See "Search ID" |
-| `SourceUrl` | `Uri` | **Required.** Absolute `http`/`https` address of the search page |
-| `Query` | `string?` | The page's own description of the search, else its `<title>` |
-| `TotalResults` | `int?` | Total the site reports (digits of `results-context-header__job-count`) |
-| `Count` | `int` | Number of jobs in `Jobs` (read-only, written to JSON) |
-| `Jobs` | `IReadOnlyList<JobListing>` | Unique by `JobId`, in page order |
-| `ParsedFrom` | `string` | Which layout matched |
-| `RetrievedAt` | `DateTimeOffset` | UTC time of the read |
-
-`SearchResult`: `record (JobResultStatus Status, JobSearch? Search, string? SavedTo, string? Message)` with factories `Saved`, `Blocked`, `Failed`, `Read`. `JobResultStatus.Read` means read successfully but not stored on its own (used by the inbox step).
-
-### `ISearchService`
-
-```csharp
-Task<SearchResult> FromUrlAsync(Uri url, CancellationToken ct = default);
-Task<SearchResult> FromFileAsync(string path, CancellationToken ct = default);
-Task<SearchResult> ReadFileAsync(string path, CancellationToken ct = default);   // read without storing
-```
-
-`FromUrlAsync`:
-
-1. Non-`http`/`https` URL → `Failed`.
-2. Fetch with `IPageFetcher`. `Blocked` → `Blocked`. `Error` → `Failed`.
-3. `SourceUrl` = the URL as given.
-4. Parse; then "Common rules".
-
-`FromFileAsync`:
-
-1. Read with `ISavedPageReader`. File errors → `Failed`.
-2. `SourceUrl` = the page's canonical link, else `og:url`, else the browser's `<!-- saved from url=(n)… -->` note if it is an `http`/`https` address. If none: a bot-check page → `Blocked`; anything else → `Failed` (*the saved page does not contain its own address*).
-3. Parse; then "Common rules".
-
-`ReadFileAsync` does the same as `FromFileAsync` but returns `Read` instead of saving. `FromFileAsync` is `ReadFileAsync` followed by save.
-
-Common rules:
-
-- The address has a `currentJobId`, the page has no LinkedIn result cards, and the only job found (if any) is that `currentJobId` → `Failed`: *the page only contains the selected job, not the result list*. This is a view-source save of LinkedIn's signed-in search, which loads the list later with scripts.
-- No jobs found and the page is a bot check → `Blocked`: *the page is a bot check, not the search results… save the page from your browser*.
-- No jobs found otherwise → `Failed`: *no job links found in the page*, with a hint that a view-source save of a signed-in LinkedIn search contains only the selected job.
-- Otherwise build `JobSearch`, save, return `Saved`.
-
-Lifetime: transient, resolved in a new DI scope for every input.
-
-### Search ID (`SearchIdResolver`)
-
-Named after the page's canonical address when it has one, otherwise after `SourceUrl`, so a link and a saved copy of the same search write to the same file.
-
-| Address | Rule | Example |
-| --- | --- | --- |
-| path ends in `/jobs/search` | `keywords` and `location` query values, joined with `-` | `/jobs/search?keywords=.net&location=Valencia` → `net-valencia` |
-| any other path | last path segment, URL-decoded | `/jobs/%2Enet-empleos-valencia` → `net-empleos-valencia` |
-| neither gives text | fallback | `search-20261014-140524` |
-
-Slug rule: lower case, accents removed, every run of characters other than `a`–`z` and `0`–`9` becomes one `-`, leading and trailing `-` removed.
-
-### Parsing (`ISearchPageParser`, `SearchPageParser`)
-
-```csharp
-ParsedSearch Parse(string html, Uri pageUrl);
-record ParsedSearch(IReadOnlyList<JobListing> Jobs, string? Query, int? TotalResults, string ParsedFrom, bool LooksLikeChallenge);
-```
-
-Singleton. Two layouts, in order:
-
-**1. LinkedIn public search page.** A card starts at any element with `data-entity-urn="urn:li:jobPosting:<id>"` (a `<div>` or an `<a>`) and ends where the next card starts. Repeated IDs are skipped.
-
-| Field | Element in the card |
-| --- | --- |
-| JobId | the `urn:li:jobPosting:<id>` value |
-| Url | first `href` to `/jobs/view/` whose job ID matches the card |
-| Title | `class="base-search-card__title"` |
-| Company | `class="base-search-card__subtitle"` |
-| Location | `class="job-search-card__location"` |
-| ListedAt | `<time class="job-search-card__listdate…" datetime="…">`, attributes in any order |
-| ParsedFrom | `LinkedIn public search page markup` |
-
-Page level: `Query` from `class="results-context-header__query-search"`, `TotalResults` from `class="results-context-header__job-count"`. Class names were taken from one saved search page in October 2026.
-
-**2. Generic fallback.** Every `<a href>` to a `/jobs/view/` page whose path ends in a job ID (6 or more digits), resolved against the page address, query removed, unique by ID; the link text is the title. `ParsedFrom` = `job links in page (no LinkedIn result cards found)`.
-
-**Bot-check detection** (`LooksLikeChallenge`), only when no jobs were found: a `<meta http-equiv="refresh">` or LinkedIn's challenge-cookie script (`ccookie`) anywhere in the page, or the words `captcha` or `security verification` in the visible text (not in scripts, which ordinary pages also contain). The page's script is never run.
-
-**Saved pages** (`SavedPageReader`, shared with the job step): when unwrapping a Chrome view-source save, the wrapper's `<!-- saved from url=… -->` note is kept as the first line, so the page's address is still known.
-
-### Storage (`JsonSearchRepository`)
-
-Singleton. Same format as the job files.
-
-- Folder: `Path.GetFullPath(Search:OutputFolder)`, created if missing.
-- File: `<SearchId>.json`, invalid file-name characters replaced by `_`. Overwritten if it exists; no previous versions kept.
-
-```json
-{
-  "searchId": "net-empleos-valencia",
-  "sourceUrl": "https://es.linkedin.com/jobs/%2Enet-empleos-valencia",
-  "query": ".net Jobs in Valencia",
-  "totalResults": 197,
-  "count": 100,
-  "jobs": [
-    {
-      "jobId": "4476446382",
-      "url": "https://es.linkedin.com/jobs/view/senior-net-developer-at-w-hunt-espa%C3%B1a-4476446382",
-      "title": "Senior .NET Developer",
-      "company": "W Hunt España",
-      "location": "Valencia, Valencian Community, Spain",
-      "listedAt": "2026-10-13"
-    }
-  ],
-  "parsedFrom": "LinkedIn public search page markup",
-  "retrievedAt": "2026-10-14T14:05:24+00:00"
-}
-```
-
-### Console output (`SearchConsole`)
-
-```text
-Search:    .net Jobs in Valencia
-Search ID: net-empleos-valencia
-Jobs:      100 in this page (the site reports 197 in total)
-(read from LinkedIn public search page markup)
-
-   1. 4476446382  Senior .NET Developer  (W Hunt España · Valencia, Valencian Community, Spain)
-   ...
- 100. 4474811701  Director/a de proyectos para PROCESOS industriales 4.0  (NUNSYS · Paterna, Valencian Community, Spain)
-
-Only the 100 jobs in this page were read. To include more, scroll further in the browser before saving the page.
-
-Saved to C:\Code\job-fetch-probe-data\output\searches\net-empleos-valencia.json
-```
-
-With no argument, the console prints `Using Search:DefaultUrl <url>` first. If no default is set, it prints how to give one and returns 1.
-
-## Inbox step
-
-Reads every saved search page in an inbox folder and stores all their jobs in one batch file. This is the main way to collect search results: save as many result pages as needed (different searches, or the same search scrolled further) into the inbox, and the app merges them.
-
-### Run
-
-1. **List** the files directly in `Inbox:Folder` matching `Inbox:Patterns` (default `*.html`, `*.htm`), oldest first (by last write time, then name). Subfolders, including the archive, are not read. The inbox folder is created if missing.
-2. **Read** each file, one by one, with `ISearchService.ReadFileAsync`: same parsing, address and bot-check rules as the search step, no network.
-3. **Merge** the jobs: a job already found in an earlier file of the same run is skipped (`JobId`), so the first file wins.
-4. If at least one file was read, **write** the batch to `<Inbox:OutputFolder>/<BatchId>.json`, where `BatchId` is the run's local time as `yyyyMMdd_HHmmss`. A second run in the same second gets `_2`, `_3`…; an existing file is never overwritten.
-5. Only after the batch file is written, **archive** each file that was read: move it to `Inbox:ArchiveFolder`, together with the `<name>_files` folder the browser saves next to a "complete" page. If the archive already has that name, the moved file becomes `<name>_<yyyyMMdd_HHmmss><ext>` (then `_2`, `_3`…).
-
-Files that could not be read (no address, no jobs, bot check, unreadable) **stay in the inbox** with the reason printed, and are tried again on the next run. If the batch file cannot be written, nothing is archived.
-
-### Models
-
-`JobSearchBatch` (record):
-
-| Property | Type | Rule |
-| --- | --- | --- |
-| `BatchId` | `string` | **Required.** `yyyyMMdd_HHmmss`, local time |
-| `CreatedAt` | `DateTimeOffset` | Local time with offset |
-| `Sources` | `IReadOnlyList<BatchSource>` | One per file read |
-| `Count` | `int` | Number of jobs in `Jobs` (read-only, written to JSON) |
-| `Jobs` | `IReadOnlyList<JobListing>` | Unique by `JobId`, in file order then page order |
-
-`BatchSource`: `record (string File, Uri SourceUrl, string? Query, int? TotalResults, int Jobs, int NewJobs)`. `NewJobs` counts the jobs from that file that were not already in the batch.
-
-`InboxRunResult`: `record (IReadOnlyList<InboxFileResult> Files, JobSearchBatch? Batch, string? SavedTo, string? Error)`.
-`InboxFileResult`: `record (string File, bool Success, int Jobs, int NewJobs, string? ArchivedTo, string? Message)`.
-
-### Services and infrastructure
-
-| Type | Project | Role |
-| --- | --- | --- |
-| `IInboxService` → `InboxService` | Services | The run above. No file access of its own |
-| `IInboxFolder` → `InboxFolder` | Interface in Services, implementation in Infrastructure | `ListPending()`, `Archive(path)` |
-| `IBatchRepository` → `JsonBatchRepository` | Interface in Services, implementation in Infrastructure | Writes the batch; same JSON format as the other files (camelCase, indented, readable accents) |
-
-### Batch file
-
-```json
-{
-  "batchId": "20261014_183201",
-  "createdAt": "2026-10-14T18:32:01+02:00",
-  "sources": [
-    { "file": "197 .net jobs in Valencia.html", "sourceUrl": "https://es.linkedin.com/jobs/%2Enet-empleos-valencia",
-      "query": ".net Jobs in Valencia", "totalResults": 197, "jobs": 100, "newJobs": 100 },
-    { "file": "same search again.html", "sourceUrl": "https://es.linkedin.com/jobs/%2Enet-empleos-valencia",
-      "query": ".net Jobs in Valencia", "totalResults": 197, "jobs": 100, "newJobs": 0 }
-  ],
-  "count": 100,
-  "jobs": [
-    { "jobId": "4476446382", "url": "https://es.linkedin.com/jobs/view/senior-net-developer-at-w-hunt-espa%C3%B1a-4476446382",
-      "title": "Senior .NET Developer", "company": "W Hunt España", "location": "Valencia, Valencian Community, Spain", "listedAt": "2026-10-13" }
-  ]
-}
-```
-
-### Console output (`InboxConsole`)
-
-```text
-===== Step 1: inbox =====
-[18:32:01] Reading 3 saved page(s) from C:\Code\job-fetch-probe-data\input
-[18:32:01] [1/3] 197 .net jobs in Valencia.html: 100 jobs (100 new)
-[18:32:01] [2/3] same search again.html: 100 jobs (0 new)
-[18:32:01] [3/3] signed-in-view-source.html: kept in the inbox. A view-source save of a signed-in LinkedIn search only contains …
-[18:32:01] Listing written: 100 unique jobs -> C:\Code\job-fetch-probe-data\output\listings\20261014_183201.json
-[18:32:01] Archived 2 page(s) to C:\Code\job-fetch-probe-data\input\archived
-```
-
-At start-up an empty inbox prints nothing. The `inbox` command prints `Inbox …: no saved pages to read.`
-
-## Details step
-
-Reads every job of one inbox listing (`<yyyyMMdd_HHmmss>.json` from `Inbox:OutputFolder`) and stores all their descriptions in one file. It reuses the job step: same typed `HttpClient`, same `JobPageParser`, same bot-check and refusal rules.
-
-### Run
-
-1. **Load** the listing. `details` without an argument takes the newest listing in `Inbox:OutputFolder` (name `yyyyMMdd_HHmmss[_n].json`).
-2. **Load** the descriptions file from an earlier run, if any: `<Details:OutputFolder>/<BatchId>.json`, same `BatchId` as the listing. Jobs already in it are skipped and cost no request, so a stopped run **resumes** where it stopped. Jobs that failed earlier are tried again.
-3. For each remaining job, in listing order: wait `Details:DelaySeconds` since the previous request, then call `IJobService.ReadUrlAsync(url)` (fetch + parse, no `<JobId>.json` written). The listing's `JobId` is kept on the result.
-4. **Rewrite** the descriptions file after every job (temporary file, then moved over the old one), so nothing is lost if the run stops or the app is closed.
-5. The run ends when the list is done, the circuit breaker stops it, or the user presses Ctrl+C (stops after the current request; progress is kept).
-
-`IJobService.ReadUrlAsync(Uri, CancellationToken)` is new; `FromUrlAsync` is now `ReadUrlAsync` followed by saving, so the job step behaves as before. `JobResult` has a new `Read` status (read, not saved) and an `HttpStatus` property.
-
-### Circuit breaker (`CircuitBreaker`)
-
-| State | Meaning |
-| --- | --- |
-| Closed | Normal: one request every `DelaySeconds` |
-| Open | No requests at all until the cooldown has passed |
-| Half-open | One trial request decides: success or a neutral answer closes the circuit, anything else opens it again |
-
-- A **refusal** (401, 403, 429, 999, or a sign-in / bot-check page: `JobResultStatus.Blocked`) opens the circuit at once.
-- A **failure** (no answer, timeout, HTTP 5xx) counts; `FailureThreshold` in a row open the circuit. A success resets the count.
-- A **neutral** answer (e.g. 404: that job is gone) only marks that job as failed.
-- Each opening waits `CooldownSeconds`, doubling on every further opening, capped at `MaxCooldownSeconds`.
-- The trial request after a cooldown is the **same job** that opened the circuit, so no job is skipped.
-- When the circuit opens for the `StopAfterOpenings`-th time, the run **stops** at once; the rest stays pending for a later `details` run. Nothing is retried quickly and the identity is never changed.
-
-### Models
-
-`JobDetailsBatch` (record): `BatchId` (required), `ListingFile` (required), `UpdatedAt`, `Listed`, `Count` (read-only), `Pending`, `StoppedReason` (null when the last run reached the end), `Jobs` (`JobPosting`, listing order), `Failures` (`JobFailure(JobId, Url, Status, Message)`).
-
-`DetailsRunResult`: `record (BatchId, SavedTo, Listed, AlreadyDone, Fetched, Failed, Pending, Total, Requests, CircuitOpenings, Elapsed, StoppedReason)`.
-
-`DetailsEvent` (progress, `IProgress<DetailsEvent>`): `Started`, `Job`, `CircuitOpened`, `Waiting` (every 30 s while open), `CircuitHalfOpen`, `CircuitClosed`, `Stopped`. The inbox step reports `InboxProgress` the same way. The console uses a synchronous `IProgress<T>` so lines print in order.
-
-### Descriptions file
-
-```json
-{
-  "batchId": "20261014_183201",
-  "listingFile": "C:\\Code\\job-fetch-probe-data\\output\\listings\\20261014_183201.json",
-  "updatedAt": "2026-10-14T18:41:12+02:00",
-  "listed": 100,
-  "count": 97,
-  "pending": 0,
-  "stoppedReason": null,
-  "jobs": [ { "jobId": "4476446382", "title": "Senior .NET Developer", "company": "W Hunt España", "description": "…", "sourceUrl": "…" } ],
-  "failures": [ { "jobId": "4470000000", "url": "…", "status": "Failed", "message": "HTTP 404 Not Found" } ]
-}
-```
-
-### Console output (`DetailsConsole`, `PipelineConsole`)
 
 Every line has a `[HH:mm:ss]` time; ok is green, warnings yellow, refusals red (no colours when output is redirected).
 
 ```text
-===== Step 2: job descriptions =====
-[18:32:02] Listing 20261014_183201.json: 100 jobs, 0 already stored, 100 to read.
+[18:32:01] Data folder: C:\Code\job-fetcher\job-fetch-probe-data
+[18:32:01] Database: C:\Code\job-fetcher\job-fetch-probe-data\database\jobs.db
+
+===== Step 1: saved search pages → job links =====
+[18:32:01] [1/2] 197 .net jobs in Valencia.html: 100 jobs (100 new in this run)
+[18:32:01] [2/2] view-source_….html: kept in the input folder. the page only contains the selected job …
+[18:32:01] Stored 100 unique job links as listing 20261014_183201.
+[18:32:01] Archived 1 page(s) to C:\Code\job-fetcher\job-fetch-probe-data\input\archived
+
+===== Step 2: job links → job descriptions =====
+[18:32:02] 100 job(s) without a description in the database.
 [18:32:02] One request every 5s, about 10m 00s in total if the site keeps answering.
 [18:32:02] Circuit breaker: opens on a refusal or 3 failures in a row, waits 5m 00s (doubling, max 30m 00s), stops after 3 opening(s). Ctrl+C stops after the current job.
 [18:32:03] [   1/100]   1%  ok       4476446382  Senior .NET Developer · W Hunt España  (ok 1, failed 0, 99 to go, ~9m 54s left)
@@ -668,96 +380,37 @@ Every line has a `[HH:mm:ss]` time; ok is green, warnings yellow, refusals red (
 [18:32:39]   … circuit open, trial request in 4m 30s
 [18:37:09] Circuit HALF-OPEN: sending one trial request.
 [18:37:10] Circuit CLOSED: the trial request worked, continuing at the normal pace.
+[18:37:16] [   4/100]   4%  gone     4476446385  the job page no longer exists; not tried again  (…)
 
 ===== Summary =====
-Inbox pages        3 found, 2 read, 2 archived, 1 kept in the inbox
-Jobs listed        100 unique  ->  C:\Code\job-fetch-probe-data\output\listings\20261014_183201.json
-Job descriptions   97 of 100 stored  (97 read in this run, 0 from earlier runs)
-                   3 failed, 0 not tried yet
-Requests           101 sent in 14m 12s, circuit breaker opened 1 time(s)
-Descriptions file  C:\Code\job-fetch-probe-data\output\descriptions\20261014_183201.json
+Input pages      2 found, 1 read and archived, 1 kept in the input folder
+Job links        100 stored as listing 20261014_183201
+Descriptions     97 read in this run, 3 failed, 0 not tried
+                 97 stored in total; 2 still to read (tried again on the next run)
+Requests         101 sent in 14m 12s, circuit breaker opened 1 time(s)
+Database         C:\Code\job-fetcher\job-fetch-probe-data\database\jobs.db
 ```
 
-When the run stops early, the summary adds `Stopped early <reason>`; when every job was read, `Result complete: every listed job has its description`.
-
-## Storage
-
-`Storage:Provider` decides where the steps store what they read. The services only see the interfaces in `Services/Abstractions`, so they work the same with both.
-
-| Interface | `Json` | `Sqlite` |
-| --- | --- | --- |
-| `IJobRepository` | `<Output:Folder>/<JobId>.json` | row in `Jobs` (+ `JobDetails`), overwritten on re-read |
-| `ISearchRepository` | `<Search:OutputFolder>/<SearchId>.json` | row in `Searches` + its cards in `SearchJobs`, replaced on re-read |
-| `IBatchRepository` | `<Inbox:OutputFolder>/<BatchId>.json` | row in `Listings` + `ListingSources` + `ListingJobs`; never overwritten (`_2`, `_3`…) |
-| `IListingStore` | reads those files | reads those rows |
-| `IDetailsRepository` | `<Details:OutputFolder>/<BatchId>.json` | the description goes into the job's row in `Jobs`; the listing row keeps pending count and stop reason |
-
-The value each `SaveAsync` returns, printed as "Saved to …" or in the summary, is the file path with `Json` and `<database path> (job|search|listing <id>)` with `Sqlite`.
-
-`IListingStore.Resolve(text)` finds a listing from what the user typed: with `Json`, an existing file path or a batch ID / file name in `Inbox:OutputFolder`; with `Sqlite`, any text containing a batch ID (`yyyyMMdd_HHmmss[_n]`). `details` uses it; the pipeline passes it the listing location the inbox step returned.
-
-### Database (`Sqlite`)
-
-One SQLite file at `Storage:Sqlite:Path` (`<DataRoot>\database\jobs.db`), through EF Core 10 (`Microsoft.EntityFrameworkCore.Sqlite`). At every start, `InitializeStorageAsync` creates the folder and the file if missing and applies any pending migrations; the first console line says which storage is in use.
-
-```text
-Jobs            JobId PK · Url · Title · Company · Location · Posted · EmploymentType · Description · ParsedFrom
-                RetrievedAt · Status (Pending | Read | Blocked | Failed) · LastError · LastAttemptAt · FirstSeenAt
-  JobDetails    Id PK · JobId FK (cascade) · Position · Label · Value
-Listings        BatchId PK · CreatedAt · DetailsUpdatedAt · DetailsPending · DetailsStoppedReason
-  ListingSources  Id PK · BatchId FK (cascade) · Position · File · SourceUrl · Query · TotalResults · Jobs · NewJobs
-  ListingJobs     (BatchId, JobId) PK · Position · Url · Title · Company · Location · ListedAt   JobId FK → Jobs
-Searches        SearchId PK · SourceUrl · Query · TotalResults · ParsedFrom · RetrievedAt
-  SearchJobs      (SearchId, JobId) PK · Position · Url · Title · Company · Location · ListedAt  JobId FK → Jobs
-```
-
-Rules:
-
-- **One row per job.** A job listed in several listings or searches has one `Jobs` row; `ListingJobs` and `SearchJobs` keep what each card showed. A new card creates the job row as `Pending`; a card for a job not read yet updates its title, company and location; a job already `Read` keeps its page data.
-- **No job is read twice.** `SqliteDetailsRepository.LoadAsync` returns every listed job whose row is `Read`, whichever listing, search or job step stored it, so the details step skips them (they count as "already stored").
-- **Progress after every job.** `SaveAsync` writes only the jobs read since the last call (same `RetrievedAt` → untouched) and sets `Blocked` / `Failed` with the message on failures. A stored description is never replaced by a later failure.
-- **Transactions.** Saving a listing or a search is one transaction; a failure leaves nothing half-written, and the inbox then archives nothing.
-- **Contexts.** Each call opens a context from `IDbContextFactory<JobsDbContext>` and disposes it at the end; nothing holds a connection between calls.
-- EF Core's own log lines are filtered out (`Microsoft.EntityFrameworkCore` → `None`); a database failure prints `Database error: …` and exits with 3.
-
-Migrations live in `Infrastructure/Database/Migrations`. `DesignTimeJobsDbContextFactory` lets the EF tools build the model without starting the app. After changing the rows or `JobsDbContext`:
-
-```sh
-dotnet ef migrations add <Name> --project src/JobFetchProbe.Infrastructure --startup-project src/JobFetchProbe.Console --output-dir Database/Migrations
-```
-
-The next start applies it. Existing JSON files are not imported.
+An empty input folder prints `No saved pages in …. Nothing new to add.`; a database where every job is read prints `Every job in the database already has its description. Nothing to read.` When the run stops early, the summary adds `Stopped early <reason>`; when nothing is left, `Result complete: every job has its description`.
 
 ## Acceptance
 
 The build is acceptable when:
 
-1. `dotnet build` succeeds for the solution.
-2. The saved page for job 4478111194 produces `output/jobs/4478111194.json` (Json storage) with title, company, location, posted, four details, a description and the canonical `sourceUrl`.
-3. A page with schema.org `JobPosting` data is read from the JSON-LD layout.
-4. A link that is refused or redirected to a sign-in page prints a blocked message, saves nothing, and is not retried.
-5. A saved page without a canonical link or `og:url` is rejected.
-6. An empty `Output:Folder` stops the app with exit code 2.
-7. The code contains no cookie handling, proxy settings, retries, or browser automation.
-8. `search` on the saved page "197 .net jobs in Valencia" produces `output/searches/net-empleos-valencia.json` (Json storage) with 100 unique jobs, each with a clean `/jobs/view/` URL ending in its job ID, title, company, location and `listedAt`, plus `totalResults` 197.
-9. `search` on LinkedIn's bot-check page (meta refresh and challenge-cookie script) reports a bot check, saves nothing, and does not run the page's script.
-10. `search` with no argument uses `Search:DefaultUrl`.
-11. The job step behaves exactly as before for any input that does not start with `search` or equal `inbox`.
-12. With the 197-jobs page, a copy of it and a page with only a "saved from" address in the inbox, one run writes one `yyyyMMdd_HHmmss.json` with 102 unique jobs and three sources, and moves those three pages (and the `_files` folder) to the archive.
-13. A page without any address, a signed-in view-source page (with or without a link to its selected job) and a bot-check page stay in the inbox with their reasons; a run with only such pages writes no batch and returns 1.
-14. A page whose name already exists in the archive is archived as `<name>_<yyyyMMdd_HHmmss><ext>`; nothing is overwritten.
-15. After the inbox writes a listing, the details step reads its jobs one at a time with the configured pause and writes one `<BatchId>.json` in `Details:OutputFolder`, rewritten after each job; the summary prints the totals.
-16. One refusal opens the circuit: no request is sent during the cooldown, then the same job is tried once; on success the run continues.
-17. `FailureThreshold` server errors in a row open the circuit; a 404 does not.
-18. At the `StopAfterOpenings`-th opening the run stops, the jobs not tried stay pending, and a later `details` run skips the stored jobs and continues.
-19. With `Storage:Provider` = `Sqlite`, the first start creates `jobs.db` and applies the initial migration; a run of the whole process writes no JSON files.
-20. With `Sqlite`, after a run stopped by refusals, the refused job is `Blocked` with its message and the jobs not tried are `Pending`; `details` then reads only those.
-21. With `Sqlite`, a second listing of jobs already read sends no requests and reports them as already stored.
-22. `Storage:Provider` = `Postgres` (or any other value) exits with 2; a file that is not a database exits with 3.
-23. With `Json`, all earlier acceptance points still hold.
-24. With only `Paths:DataRoot` set, the first start creates `input`, `input/archived` and `pages` under it, the database goes to `database/jobs.db`, and JSON output to `output/…`; nothing is written inside the repository.
-25. A folder set on its own (e.g. `Inbox:Folder`) is used instead of the derived one, while the others still follow `Paths:DataRoot`.
+1. `dotnet build` succeeds for the solution, and `dotnet ef migrations has-pending-model-changes` reports no changes.
+2. The first start with an empty data folder creates `input`, `input/archived` and `database/jobs.db` (all migrations applied).
+3. With the saved page "197 .net jobs in Valencia" in `input`, step 1 stores 100 unique jobs as `Pending` with title, company, location, a clean `/jobs/view/` URL, and the card's `ListedAt`; the page (and its `_files` folder) moves to `input/archived`.
+4. A signed-in search saved as a complete page gives its jobs (the saved example: 3 jobs with title, company, location and a `/jobs/view/<id>/` address; query "Senior .NET Software Engineer"; 3 results).
+5. A page without an address, a signed-in view-source save, a page without job links and a bot-check page stay in `input` with their reasons; the run exits with 1.
+6. Step 2 reads the jobs one at a time with the configured pause, stores each result at once, and sets `Read`, `Blocked`, `Failed` or `Gone`.
+7. One refusal opens the circuit: no request during the cooldown, then the same job is tried once; on success the run continues. `FailureThreshold` server errors in a row open it too; a 404 does not, and marks the job `Gone`.
+8. At the `StopAfterOpenings`-th opening the run stops; the next start (with an empty `input`) reads the jobs still `Pending`, then `Blocked`/`Failed`, and nothing else.
+9. Saving the same search page again creates a new listing but sends no requests: its jobs are already `Read`.
+10. A database made by an earlier version is upgraded at start-up and keeps its jobs.
+11. A bad setting exits with 2; a file that is not a database exits with 3.
+12. The web app lists every job, 25 per page, newest IDs first; clicking one shows its details and description; an unknown ID gives 404; without a database it shows a message and creates nothing.
+13. The code contains no cookie handling, proxy settings, quick retries, or browser automation.
 
 ## Not in this build
 
-A server database (PostgreSQL in Docker is a possible later step: the EF Core model would stay, with another provider and a new migration), importing existing JSON files into the database, requesting further search result pages (pagination, the `/jobs-guest/` endpoints), running or solving bot-check scripts, logins, cookies, browser automation, retries with a different identity, scheduled runs, a database, applying to jobs, and storage of recruiter or contact details.
+Commands or arguments (the earlier prompt, single-job, search-by-link and `details` commands were removed), JSON-file storage, requesting search result pages (pagination, the `/jobs-guest/` endpoints), running or solving bot-check scripts, logins, cookies, browser automation, retries with a different identity, scheduled runs, a server database (PostgreSQL in Docker is a possible later step: the EF Core model would stay, with another provider and a new migration), applying to jobs, and storage of recruiter or contact details.

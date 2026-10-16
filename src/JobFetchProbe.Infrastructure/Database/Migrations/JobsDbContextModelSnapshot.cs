@@ -17,7 +17,7 @@ namespace JobFetchProbe.Infrastructure.Database.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.13");
 
-            modelBuilder.Entity("JobFetchProbe.Infrastructure.Database.JobDetailRow", b =>
+            modelBuilder.Entity("JobFetchProbe.Infrastructure.Database.Entities.JobDetailRow", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -45,7 +45,7 @@ namespace JobFetchProbe.Infrastructure.Database.Migrations
                     b.ToTable("JobDetails", (string)null);
                 });
 
-            modelBuilder.Entity("JobFetchProbe.Infrastructure.Database.JobRow", b =>
+            modelBuilder.Entity("JobFetchProbe.Infrastructure.Database.Entities.JobRow", b =>
                 {
                     b.Property<string>("JobId")
                         .HasColumnType("TEXT");
@@ -101,7 +101,7 @@ namespace JobFetchProbe.Infrastructure.Database.Migrations
                     b.ToTable("Jobs", (string)null);
                 });
 
-            modelBuilder.Entity("JobFetchProbe.Infrastructure.Database.ListingJobRow", b =>
+            modelBuilder.Entity("JobFetchProbe.Infrastructure.Database.Entities.ListingJobRow", b =>
                 {
                     b.Property<string>("BatchId")
                         .HasColumnType("TEXT");
@@ -135,7 +135,7 @@ namespace JobFetchProbe.Infrastructure.Database.Migrations
                     b.ToTable("ListingJobs", (string)null);
                 });
 
-            modelBuilder.Entity("JobFetchProbe.Infrastructure.Database.ListingRow", b =>
+            modelBuilder.Entity("JobFetchProbe.Infrastructure.Database.Entities.ListingRow", b =>
                 {
                     b.Property<string>("BatchId")
                         .HasColumnType("TEXT");
@@ -143,21 +143,12 @@ namespace JobFetchProbe.Infrastructure.Database.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<int?>("DetailsPending")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("DetailsStoppedReason")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTimeOffset?>("DetailsUpdatedAt")
-                        .HasColumnType("TEXT");
-
                     b.HasKey("BatchId");
 
                     b.ToTable("Listings", (string)null);
                 });
 
-            modelBuilder.Entity("JobFetchProbe.Infrastructure.Database.ListingSourceRow", b =>
+            modelBuilder.Entity("JobFetchProbe.Infrastructure.Database.Entities.ListingSourceRow", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -197,130 +188,49 @@ namespace JobFetchProbe.Infrastructure.Database.Migrations
                     b.ToTable("ListingSources", (string)null);
                 });
 
-            modelBuilder.Entity("JobFetchProbe.Infrastructure.Database.SearchJobRow", b =>
+            modelBuilder.Entity("JobFetchProbe.Infrastructure.Database.Entities.JobDetailRow", b =>
                 {
-                    b.Property<string>("SearchId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("JobId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Company")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("ListedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Location")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("Position")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Title")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Url")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("SearchId", "JobId");
-
-                    b.HasIndex("JobId");
-
-                    b.ToTable("SearchJobs", (string)null);
-                });
-
-            modelBuilder.Entity("JobFetchProbe.Infrastructure.Database.SearchRow", b =>
-                {
-                    b.Property<string>("SearchId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("ParsedFrom")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Query")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTimeOffset>("RetrievedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("SourceUrl")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("TotalResults")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("SearchId");
-
-                    b.ToTable("Searches", (string)null);
-                });
-
-            modelBuilder.Entity("JobFetchProbe.Infrastructure.Database.JobDetailRow", b =>
-                {
-                    b.HasOne("JobFetchProbe.Infrastructure.Database.JobRow", null)
+                    b.HasOne("JobFetchProbe.Infrastructure.Database.Entities.JobRow", null)
                         .WithMany("Details")
                         .HasForeignKey("JobId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("JobFetchProbe.Infrastructure.Database.ListingJobRow", b =>
+            modelBuilder.Entity("JobFetchProbe.Infrastructure.Database.Entities.ListingJobRow", b =>
                 {
-                    b.HasOne("JobFetchProbe.Infrastructure.Database.ListingRow", null)
+                    b.HasOne("JobFetchProbe.Infrastructure.Database.Entities.ListingRow", null)
                         .WithMany("Jobs")
                         .HasForeignKey("BatchId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("JobFetchProbe.Infrastructure.Database.JobRow", null)
+                    b.HasOne("JobFetchProbe.Infrastructure.Database.Entities.JobRow", null)
                         .WithMany()
                         .HasForeignKey("JobId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("JobFetchProbe.Infrastructure.Database.ListingSourceRow", b =>
+            modelBuilder.Entity("JobFetchProbe.Infrastructure.Database.Entities.ListingSourceRow", b =>
                 {
-                    b.HasOne("JobFetchProbe.Infrastructure.Database.ListingRow", null)
+                    b.HasOne("JobFetchProbe.Infrastructure.Database.Entities.ListingRow", null)
                         .WithMany("Sources")
                         .HasForeignKey("BatchId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("JobFetchProbe.Infrastructure.Database.SearchJobRow", b =>
-                {
-                    b.HasOne("JobFetchProbe.Infrastructure.Database.JobRow", null)
-                        .WithMany()
-                        .HasForeignKey("JobId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("JobFetchProbe.Infrastructure.Database.SearchRow", null)
-                        .WithMany("Jobs")
-                        .HasForeignKey("SearchId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("JobFetchProbe.Infrastructure.Database.JobRow", b =>
+            modelBuilder.Entity("JobFetchProbe.Infrastructure.Database.Entities.JobRow", b =>
                 {
                     b.Navigation("Details");
                 });
 
-            modelBuilder.Entity("JobFetchProbe.Infrastructure.Database.ListingRow", b =>
+            modelBuilder.Entity("JobFetchProbe.Infrastructure.Database.Entities.ListingRow", b =>
                 {
                     b.Navigation("Jobs");
 
                     b.Navigation("Sources");
-                });
-
-            modelBuilder.Entity("JobFetchProbe.Infrastructure.Database.SearchRow", b =>
-                {
-                    b.Navigation("Jobs");
                 });
 #pragma warning restore 612, 618
         }

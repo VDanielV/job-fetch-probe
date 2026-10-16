@@ -1,48 +1,21 @@
-using JobFetchProbe.Models;
+using JobFetchProbe.Models.Search;
 using JobFetchProbe.Services.Abstractions;
 using JobFetchProbe.Services.Parsing;
 
 namespace JobFetchProbe.Services.Search;
 
 /// <summary>
-/// Reads one search results page and stores its job links. One request per link, no pagination:
-/// only the jobs already in the page are read.
+/// Reads the job links in a search results page saved from the browser. No network: only the jobs already in the
+/// page are read.
 /// </summary>
 public sealed partial class SearchService(
-    IPageFetcher fetcher,
     ISavedPageReader savedPages,
     ISearchPageParser parser,
-    ISearchRepository repository,
     TimeProvider time) : ISearchService
 {
     private const string ChallengeMessage =
         "the page is a bot check, not the search results (LinkedIn sends this to clients it does not trust). " +
-        "Open the search in your browser, scroll to load the results you want, save the page, and give the file path instead.";
-
-    public async Task<SearchResult> FromUrlAsync(Uri url, CancellationToken ct = default)
-    {
-        if (url.Scheme != Uri.UriSchemeHttps && url.Scheme != Uri.UriSchemeHttp)
-        {
-            return SearchResult.Failed("the link must start with https://");
-        }
-
-        var page = await fetcher.GetAsync(url, ct);
-        if (page.Blocked)
-        {
-            return SearchResult.Blocked(
-                $"{page.FinalUrl.Host} did not return the search page (status {page.Status}: sign-in or refusal). " +
-                "Save the page from your browser and give the file path instead.");
-        }
-        if (page.Error is not null)
-        {
-            return SearchResult.Failed($"could not fetch the page: {page.Error}");
-        }
-
-        return await SaveIfReadAsync(Build(page.Html, url), ct);
-    }
-
-    public async Task<SearchResult> FromFileAsync(string path, CancellationToken ct = default) =>
-        await SaveIfReadAsync(await ReadFileAsync(path, ct), ct);
+        "Open the search in your browser, scroll to load the results you want, and save the page into the input folder.";
 
     public async Task<SearchResult> ReadFileAsync(string path, CancellationToken ct = default)
     {
@@ -66,20 +39,10 @@ public sealed partial class SearchService(
                 ? SearchResult.Blocked(ChallengeMessage)
                 : SearchResult.Failed(
                     "the saved page does not contain its own address (no canonical link, og:url or \"saved from\" note), so the search's URL is unknown. " +
-                    "Open the search in the browser and save it again, or paste the link instead.");
+                    "Open the search in the browser and save it again.");
         }
 
         return Build(html, sourceUrl);
-    }
-
-    private async Task<SearchResult> SaveIfReadAsync(SearchResult read, CancellationToken ct)
-    {
-        if (read.Status != JobResultStatus.Read || read.Search is null)
-        {
-            return read;
-        }
-        var path = await repository.SaveAsync(read.Search, ct);
-        return SearchResult.Saved(read.Search, path);
     }
 
     /// <summary>
@@ -114,15 +77,16 @@ public sealed partial class SearchService(
     {
         var parsed = parser.Parse(html, sourceUrl);
 
-        // A view-source save of LinkedIn's signed-in search page holds only the selected job (currentJobId in its
-        // address), not the list. Reading that one job as "the results" would be misleading, so it is refused.
+        // No result cards of a known layout, and the only job found is the one selected in the address (currentJobId):
+        // the page holds no list. Reading that one job as "the results" would be misleading, so it is refused. This is
+        // what a view-source save of LinkedIn's signed-in pages looks like; a complete save in a new, unknown layout too.
         if (parsed.Jobs.Count <= 1 && CurrentJobId(sourceUrl) is { } selected &&
             parsed.Jobs.All(j => j.JobId == selected) && !parsed.ParsedFrom.StartsWith("LinkedIn", StringComparison.Ordinal))
         {
             return SearchResult.Failed(
-                "the page only contains the selected job (" + selected + "), not the result list. This is what a view-source " +
-                "save of a signed-in LinkedIn search looks like: the list is loaded later by the page's scripts. Save the " +
-                "signed-out search page instead, or use \"Save page as → Webpage, Complete\" after the list has loaded.");
+                "no result list found, only the selected job (" + selected + "). If this is a view-source save (Ctrl+U), it " +
+                "cannot contain the list: LinkedIn loads it later with scripts. Save the page with \"Save page as → Webpage, " +
+                "Complete\" after scrolling through the list. If it already is a complete save, LinkedIn's layout may have changed.");
         }
 
         if (parsed.Jobs.Count == 0)
@@ -134,16 +98,8 @@ public sealed partial class SearchService(
                     "selected job: save the signed-out search page instead, or use \"Save page as → Webpage, Complete\" after the list has loaded.");
         }
 
-        // Name the search after the page's canonical address when it has one, so a link and a saved
-        // copy of the same search write to the same file.
-        var nameSource = JobIdResolver.CanonicalUri(html) ?? sourceUrl;
-        var searchId = SearchIdResolver.FromUrl(nameSource)
-                       ?? SearchIdResolver.FromUrl(sourceUrl)
-                       ?? $"search-{time.GetUtcNow():yyyyMMdd-HHmmss}";
-
         var search = new JobSearch
         {
-            SearchId = searchId,
             SourceUrl = sourceUrl,
             Query = parsed.Query,
             TotalResults = parsed.TotalResults,

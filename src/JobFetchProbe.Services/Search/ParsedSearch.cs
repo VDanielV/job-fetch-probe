@@ -1,4 +1,5 @@
-using JobFetchProbe.Models;
+using JobFetchProbe.Models.Search;
+
 
 namespace JobFetchProbe.Services.Search;
 

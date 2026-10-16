@@ -1,10 +1,23 @@
-using JobFetchProbe.Models;
+using JobFetchProbe.Models.Jobs;
+using JobFetchProbe.Models.Search;
 
 namespace JobFetchProbe.Services.Abstractions;
 
-/// <summary>Stores jobs. Implemented in Infrastructure as one JSON file per job.</summary>
+/// <summary>The jobs table: the work list of step 2 and where each result is stored. Implemented with the database.</summary>
 public interface IJobRepository
 {
-    /// <returns>Where the job was stored (the full file path).</returns>
-    Task<string> SaveAsync(JobPosting job, CancellationToken ct = default);
+    /// <summary>
+    /// Every job without a description that is worth trying: not read yet, or refused / failed before.
+    /// Jobs the site reported as gone are left out. Never-tried jobs come first, oldest first.
+    /// </summary>
+    Task<IReadOnlyList<JobListing>> GetUnreadAsync(CancellationToken ct = default);
+
+    /// <summary>Stores what the job page showed and marks the job as read.</summary>
+    Task SaveDescriptionAsync(JobPosting job, CancellationToken ct = default);
+
+    /// <summary>Records a failed attempt. <paramref name="gone"/>: the page no longer exists (HTTP 404/410), so it is not tried again.</summary>
+    Task SaveFailureAsync(string jobId, JobResultStatus status, bool gone, string message, CancellationToken ct = default);
+
+    /// <summary>Number of jobs with a description.</summary>
+    Task<int> CountReadAsync(CancellationToken ct = default);
 }

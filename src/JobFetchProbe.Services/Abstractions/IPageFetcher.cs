@@ -1,4 +1,5 @@
-using JobFetchProbe.Models;
+using JobFetchProbe.Models.Jobs;
+
 
 namespace JobFetchProbe.Services.Abstractions;
 

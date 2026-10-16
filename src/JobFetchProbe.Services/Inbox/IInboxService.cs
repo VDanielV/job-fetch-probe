@@ -1,8 +1,8 @@
-using JobFetchProbe.Models;
+using JobFetchProbe.Models.Inbox;
 
 namespace JobFetchProbe.Services.Inbox;
 
-/// <summary>Reads every saved search page in the inbox, stores all their jobs as one batch, and archives the pages read.</summary>
+/// <summary>Step 1: reads every saved search page in the input folder, stores their job links in the database, and archives the pages read.</summary>
 public interface IInboxService
 {
     /// <param name="progress">Told before and after each page is read.</param>

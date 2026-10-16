@@ -1,71 +1,57 @@
-using JobFetchProbe.Models;
+using JobFetchProbe.Infrastructure.Database;
+using JobFetchProbe.Models.Details;
+using JobFetchProbe.Models.Inbox;
+using Microsoft.Extensions.Options;
 
 namespace JobFetchProbe.Console;
 
 /// <summary>
-/// The whole process: step 1 inbox, then (if a listing was written and Details:RunAfterInbox is true) step 2 job
-/// descriptions for that listing, then one summary with the totals. Runs at start-up and with the "inbox" command.
+/// The whole run: step 1 (saved search pages → job links in the database, pages archived), then step 2 (every job
+/// without a description → its description in the database), then one summary with the totals.
 /// </summary>
-public sealed class PipelineConsole(InboxConsole inbox, DetailsConsole details)
+public sealed class PipelineConsole(InboxConsole inbox, DetailsConsole details, IOptions<DatabaseSettings> database)
 {
-    /// <param name="quietWhenEmpty">At start-up, print nothing at all if the inbox is empty.</param>
-    /// <returns>True when every inbox page was archived and every listed job was read.</returns>
-    public async Task<bool> RunAsync(bool quietWhenEmpty = false)
+    /// <returns>0 when nothing is left to do (no page kept in the input folder, every job read or gone); 1 otherwise.</returns>
+    public async Task<int> RunAsync()
     {
-        var inboxResult = await inbox.RunAsync(quietWhenEmpty);
-        if (inboxResult.Files.Count == 0)
-        {
-            return true;
-        }
-
-        DetailsRunResult? detailsResult = null;
-        if (inboxResult.SavedTo is not null && details.RunAfterInbox)
-        {
-            detailsResult = await details.RunAsync(inboxResult.SavedTo);
-        }
-
+        var inboxResult = await inbox.RunAsync();
+        var detailsResult = await details.RunAsync();
         PrintSummary(inboxResult, detailsResult);
-        return InboxConsole.IsComplete(inboxResult) &&
-               (detailsResult is null ? !details.RunAfterInbox || inboxResult.SavedTo is null : detailsResult.Failed == 0 && detailsResult.Pending == 0);
+        return InboxConsole.IsComplete(inboxResult) && detailsResult.StillUnread == 0 ? 0 : 1;
     }
 
-    public static void PrintSummary(InboxRunResult? inboxResult, DetailsRunResult? detailsResult)
+    private void PrintSummary(InboxRunResult step1, DetailsRunResult step2)
     {
-        if (inboxResult is not { Files.Count: > 0 } && detailsResult is null)
-        {
-            return; // nothing happened, nothing to sum up
-        }
-
         ConsoleLog.Heading("Summary");
 
-        if (inboxResult is { Files.Count: > 0 })
+        if (step1.Files.Count == 0)
         {
-            var read = inboxResult.Files.Count(f => f.Success);
-            var archived = inboxResult.Files.Count(f => f.ArchivedTo is not null);
-            var kept = inboxResult.Files.Count - archived;
-            System.Console.WriteLine($"Inbox pages        {inboxResult.Files.Count} found, {read} read, {archived} archived, {kept} kept in the inbox");
-            System.Console.WriteLine(inboxResult.SavedTo is not null && inboxResult.Batch is not null
-                ? $"Jobs listed        {inboxResult.Batch.Count} unique  ->  {inboxResult.SavedTo}"
-                : "Jobs listed        0 (no page could be read, so no listing was written)");
+            Line("Input pages", "none");
+        }
+        else
+        {
+            var archived = step1.Files.Count(f => f.ArchivedTo is not null);
+            var kept = step1.Files.Count - archived;
+            Line("Input pages", $"{step1.Files.Count} found, {archived} read and archived, {kept} kept in the input folder");
+            Line("Job links", step1.ListingId is not null && step1.Batch is not null
+                ? $"{step1.Batch.Count} stored as listing {step1.ListingId}"
+                : "none stored (no page could be read)");
         }
 
-        if (detailsResult is not null)
+        Line("Descriptions", $"{step2.Fetched} read in this run, {step2.Failed} failed, {step2.Pending} not tried");
+        Line(string.Empty, $"{step2.TotalRead} stored in total; {step2.StillUnread} still to read (tried again on the next run)");
+        Line("Requests", $"{step2.Requests} sent in {ConsoleLog.Duration(step2.Elapsed)}, circuit breaker opened {step2.CircuitOpenings} time(s)");
+        Line("Database", database.Value.FullPath);
+
+        if (step2.StoppedReason is not null)
         {
-            System.Console.WriteLine($"Job descriptions   {detailsResult.Total} of {detailsResult.Listed} stored  ({detailsResult.Fetched} read in this run, {detailsResult.AlreadyDone} from earlier runs)");
-            System.Console.WriteLine($"                   {detailsResult.Failed} failed, {detailsResult.Pending} not tried yet");
-            System.Console.WriteLine($"Requests           {detailsResult.Requests} sent in {ConsoleLog.Duration(detailsResult.Elapsed)}, circuit breaker opened {detailsResult.CircuitOpenings} time(s)");
-            if (detailsResult.SavedTo is not null)
-            {
-                System.Console.WriteLine($"Descriptions saved {detailsResult.SavedTo}");
-            }
-            if (detailsResult.StoppedReason is not null)
-            {
-                System.Console.WriteLine($"Stopped early      {detailsResult.StoppedReason}");
-            }
-            else if (detailsResult.Pending == 0 && detailsResult.Failed == 0)
-            {
-                System.Console.WriteLine("Result             complete: every listed job has its description");
-            }
+            Line("Stopped early", step2.StoppedReason);
+        }
+        else if (step2.StillUnread == 0 && InboxConsole.IsComplete(step1))
+        {
+            Line("Result", "complete: every job has its description");
         }
     }
+
+    private static void Line(string label, string text) => System.Console.WriteLine($"{label,-15}  {text}");
 }

@@ -1,16 +1,19 @@
-using JobFetchProbe.Models;
+using JobFetchProbe.Models.Inbox;
+using JobFetchProbe.Models.Jobs;
+using JobFetchProbe.Models.Search;
 using JobFetchProbe.Services.Abstractions;
 using JobFetchProbe.Services.Search;
 
 namespace JobFetchProbe.Services.Inbox;
 
 /// <summary>
-/// One inbox run:
-/// 1. read each pending page, one by one, with the search step's reader (no network);
+/// Step 1 (inbox):
+/// 1. read each saved search page in the input folder, one by one (no network);
 /// 2. merge their jobs, dropping any job already found in an earlier page of the run;
-/// 3. if at least one page was read, write the batch as &lt;yyyyMMdd_HHmmss&gt;.json;
-/// 4. only after the batch is written, move each page that was read to the archive.
-/// Pages that fail stay in the inbox, with the reason reported, and are tried again on the next run.
+/// 3. if at least one page was read, store the listing and its job links in the database;
+/// 4. only after that, move each page that was read to the archive.
+/// Pages that fail stay in the input folder, with the reason reported, and are tried again on the next run.
+/// If the database cannot be written, the exception ends the run and nothing is archived.
 /// </summary>
 public sealed class InboxService(
     IInboxFolder inbox,
@@ -67,7 +70,7 @@ public sealed class InboxService(
 
         if (sources.Count == 0)
         {
-            return new InboxRunResult(files, null, null, null);
+            return new InboxRunResult(files, null, null);
         }
 
         var now = time.GetLocalNow();
@@ -79,16 +82,7 @@ public sealed class InboxService(
             Jobs = jobs,
         };
 
-        string savedTo;
-        try
-        {
-            savedTo = await repository.SaveAsync(batch, ct);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            // Nothing is archived, so the same pages are read again next time.
-            return new InboxRunResult(files, batch, null, $"could not write the batch file: {ex.Message}");
-        }
+        var listingId = await repository.SaveAsync(batch, ct);
 
         foreach (var (path, index) in readPaths)
         {
@@ -102,6 +96,6 @@ public sealed class InboxService(
             }
         }
 
-        return new InboxRunResult(files, batch, savedTo, null);
+        return new InboxRunResult(files, batch, listingId);
     }
 }

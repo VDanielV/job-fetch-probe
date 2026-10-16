@@ -1,22 +1,16 @@
 namespace JobFetchProbe.Infrastructure.Inbox;
 
-/// <summary>Bound from the "Inbox" section of appsettings.json.</summary>
+/// <summary>Bound from the "Inbox" section of appsettings.json (both folders normally come from Paths:DataRoot).</summary>
 public sealed class InboxSettings
 {
     public const string SectionName = "Inbox";
 
-    /// <summary>Where saved search pages are dropped. Created if missing.</summary>
-    public string Folder { get; set; } = "in";
+    /// <summary>Where saved search pages are dropped (&lt;DataRoot&gt;\input). Created if missing.</summary>
+    public string Folder { get; set; } = "input";
 
-    /// <summary>Where pages are moved after they were read and the batch was written. May be inside <see cref="Folder"/>.</summary>
-    public string ArchiveFolder { get; set; } = Path.Combine("in", "archived");
+    /// <summary>Where pages are moved after they were read and stored (&lt;DataRoot&gt;\input\archived).</summary>
+    public string ArchiveFolder { get; set; } = Path.Combine("input", "archived");
 
-    /// <summary>Folder for the &lt;yyyyMMdd_HHmmss&gt;.json batch files.</summary>
-    public string OutputFolder { get; set; } = "job-searches";
-
-    /// <summary>Process the inbox every time the app starts, before anything else.</summary>
-    public bool ProcessOnStart { get; set; } = true;
-
-    /// <summary>File patterns read from the inbox.</summary>
+    /// <summary>File patterns read from the input folder.</summary>
     public string[] Patterns { get; set; } = ["*.html", "*.htm"];
 }

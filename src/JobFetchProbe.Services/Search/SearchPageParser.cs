@@ -1,14 +1,17 @@
+using JobFetchProbe.Models.Search;
+using JobFetchProbe.Services.Parsing;
 using System.Net;
 using System.Text.RegularExpressions;
-using JobFetchProbe.Models;
-using JobFetchProbe.Services.Parsing;
 
 namespace JobFetchProbe.Services.Search;
 
 /// <summary>
-/// Reads the job links from a search results page, trying two layouts in order:
-/// 1. LinkedIn's public search page: one card per job, marked data-entity-urn="urn:li:jobPosting:&lt;id&gt;";
-/// 2. generic fallback: every link to a /jobs/view/ page.
+/// Reads the job links from a search results page, trying three layouts in order:
+/// 1. LinkedIn's public (signed-out) search page: one card per job, marked data-entity-urn="urn:li:jobPosting:&lt;id&gt;";
+/// 2. LinkedIn's signed-in search page (/jobs/search-results/): one card per job, marked
+///    componentkey="job-card-component-ref-&lt;id&gt;"; its class names are generated, so only that key and the order of
+///    the card's paragraphs (title, company, location) are used;
+/// 3. generic fallback: every link to a /jobs/view/ page.
 /// Duplicates (same job ID) are dropped, keeping page order. Only the jobs present in the page are read;
 /// further result pages are not requested.
 /// </summary>
@@ -17,11 +20,18 @@ public sealed partial class SearchPageParser : ISearchPageParser
     public ParsedSearch Parse(string html, Uri pageUrl)
     {
         var query = ClassText(html, "results-context-header__query-search")
+                    ?? QueryValue(pageUrl, "keywords")
                     ?? FirstText(TitleTag(), html);
-        var total = ParseCount(ClassText(html, "results-context-header__job-count"));
+        var total = ParseCount(ClassText(html, "results-context-header__job-count"))
+                    ?? ParseCount(FirstText(ResultCount(), html));
 
         var jobs = FromLinkedInCards(html, pageUrl);
         var parsedFrom = "LinkedIn public search page markup";
+        if (jobs.Count == 0)
+        {
+            jobs = FromSignedInCards(html, pageUrl);
+            parsedFrom = "LinkedIn signed-in search page markup";
+        }
         if (jobs.Count == 0)
         {
             jobs = FromJobLinks(html, pageUrl);
@@ -61,6 +71,88 @@ public sealed partial class SearchPageParser : ISearchPageParser
         }
 
         return jobs;
+    }
+
+    /// <summary>
+    /// LinkedIn's signed-in search cards. A card runs from its componentkey to the next card's (the key appears twice per
+    /// card, on two nested elements). Its first paragraphs are the title, the company and the location; later ones
+    /// ("Visto", salary…) are ignored. The cards link back to the search, so each job's address is built from its ID.
+    /// </summary>
+    private static List<JobListing> FromSignedInCards(string html, Uri pageUrl)
+    {
+        var starts = SignedInCardStart().Matches(html);
+        var jobs = new List<JobListing>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        for (var i = 0; i < starts.Count; i++)
+        {
+            var id = starts[i].Groups[1].Value;
+            if (!seen.Add(id))
+            {
+                continue;
+            }
+
+            var next = i + 1;
+            while (next < starts.Count && starts[next].Groups[1].Value == id)
+            {
+                next++;
+            }
+            var end = next < starts.Count ? starts[next].Index : Math.Min(html.Length, starts[i].Index + MaxSignedInCardLength);
+            var paragraphs = Paragraph().Matches(html[starts[i].Index..end]).Select(m => m.Groups[1].Value).ToList();
+
+            jobs.Add(new JobListing
+            {
+                JobId = id,
+                Url = CardUrl(html[starts[i].Index..end], id, pageUrl),
+                Title = paragraphs.Count > 0 ? SignedInTitle(paragraphs[0]) : null,
+                Company = paragraphs.Count > 1 ? TextOrNull(paragraphs[1]) : null,
+                Location = paragraphs.Count > 2 ? TextOrNull(paragraphs[2]) : null,
+            });
+        }
+
+        return jobs;
+    }
+
+    /// <summary>Longest stretch read for the last signed-in card, which has no next card to end it.</summary>
+    private const int MaxSignedInCardLength = 20_000;
+
+    /// <summary>
+    /// The title paragraph holds the title twice: first for screen readers, with a label such as "(Empleo verificado)"
+    /// added, then the visible title. The visible one is used; without it, the first.
+    /// </summary>
+    private static string? SignedInTitle(string paragraph)
+    {
+        var firstSpanEnd = paragraph.IndexOf("</span>", StringComparison.OrdinalIgnoreCase);
+        if (paragraph.TrimStart().StartsWith("<span", StringComparison.OrdinalIgnoreCase) && firstSpanEnd >= 0)
+        {
+            var visible = TextOrNull(paragraph[(firstSpanEnd + "</span>".Length)..]);
+            if (visible is not null)
+            {
+                return visible;
+            }
+        }
+        return TextOrNull(paragraph);
+    }
+
+    private static string? TextOrNull(string html)
+    {
+        var text = JobPageParser.HtmlToText(html);
+        return text.Length > 0 ? text : null;
+    }
+
+    /// <summary>A query value of the page's address, e.g. keywords=Senior+.NET+Software+Engineer.</summary>
+    private static string? QueryValue(Uri url, string name)
+    {
+        foreach (var pair in url.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = pair.Split('=', 2);
+            if (parts.Length == 2 && parts[0].Equals(name, StringComparison.OrdinalIgnoreCase))
+            {
+                var value = Uri.UnescapeDataString(parts[1].Replace('+', ' ')).Trim();
+                return value.Length > 0 ? value : null;
+            }
+        }
+        return null;
     }
 
     /// <summary>The card's /jobs/view/ link without query or fragment; if the card has none, the canonical form for the ID.</summary>
@@ -163,6 +255,17 @@ public sealed partial class SearchPageParser : ISearchPageParser
     // Start of a result card: the opening tag that carries the job URN (a <div> or an <a>, depending on the card).
     [GeneratedRegex(@"<\w+\b[^>]*\bdata-entity-urn=""urn:li:jobPosting:(\d+)""", RegexOptions.IgnoreCase)]
     private static partial Regex CardStart();
+
+    // Start of a signed-in search card.
+    [GeneratedRegex(@"\bcomponentkey=""job-card-component-ref-(\d+)""", RegexOptions.IgnoreCase)]
+    private static partial Regex SignedInCardStart();
+
+    [GeneratedRegex(@"<p\b[^>]*>(.*?)</p\s*>", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    private static partial Regex Paragraph();
+
+    // "3 resultados" / "1,234 results" in its own paragraph (signed-in search page).
+    [GeneratedRegex(@"<p\b[^>]*>\s*([\d.,]+\s+(?:resultados?|results?))\s*</p\s*>", RegexOptions.IgnoreCase)]
+    private static partial Regex ResultCount();
 
     [GeneratedRegex(@"href=""([^""]*/jobs/view/[^""]*)""", RegexOptions.IgnoreCase)]
     private static partial Regex JobViewHref();

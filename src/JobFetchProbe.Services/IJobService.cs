@@ -1,17 +1,13 @@
-using JobFetchProbe.Models;
+using JobFetchProbe.Models.Jobs;
 
 namespace JobFetchProbe.Services;
 
-/// <summary>Reads a job from a link or a saved page and stores it.</summary>
+/// <summary>Reads one job page from its link.</summary>
 public interface IJobService
 {
-    Task<JobResult> FromUrlAsync(Uri url, CancellationToken ct = default);
-
-    Task<JobResult> FromFileAsync(string path, CancellationToken ct = default);
-
     /// <summary>
-    /// Fetches and reads one job page without storing it. Returns status Read with the job on success,
-    /// otherwise Blocked or Failed with a message. Used by the details step, which stores many jobs in one file.
+    /// Fetches and reads one job page. Returns status Read with the job on success, otherwise Blocked or Failed
+    /// with a message and the HTTP status. Stores nothing: step 2 decides what to store.
     /// </summary>
     Task<JobResult> ReadUrlAsync(Uri url, CancellationToken ct = default);
 }

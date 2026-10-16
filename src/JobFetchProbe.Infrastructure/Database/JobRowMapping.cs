@@ -1,4 +1,6 @@
-using JobFetchProbe.Models;
+using JobFetchProbe.Infrastructure.Database.Entities;
+using JobFetchProbe.Models.Jobs;
+using JobFetchProbe.Models.Search;
 using Microsoft.EntityFrameworkCore;
 
 namespace JobFetchProbe.Infrastructure.Database;
@@ -6,7 +8,7 @@ namespace JobFetchProbe.Infrastructure.Database;
 /// <summary>Copies between the Models records and the job rows.</summary>
 internal static class JobRowMapping
 {
-    /// <summary>Stores what a job page showed. Overwrites the previous read, as the JSON files do.</summary>
+    /// <summary>Stores what a job page showed and marks the job as read. Overwrites any earlier read.</summary>
     public static void ApplyPosting(this JobRow row, JobPosting job)
     {
         row.Url = job.SourceUrl.AbsoluteUri;
@@ -39,29 +41,14 @@ internal static class JobRowMapping
         row.Location = card.Location ?? row.Location;
     }
 
-    public static JobPosting ToPosting(this JobRow row) => new()
+    /// <summary>The job as step 2 needs it: its ID, its page, and what its card showed.</summary>
+    public static JobListing ToCard(this JobRow row) => new()
     {
         JobId = row.JobId,
-        SourceUrl = new Uri(row.Url),
+        Url = new Uri(row.Url),
         Title = row.Title,
         Company = row.Company,
         Location = row.Location,
-        Posted = row.Posted,
-        EmploymentType = row.EmploymentType,
-        Details = row.Details.OrderBy(d => d.Position).Select(d => new JobDetail(d.Label, d.Value)).ToList(),
-        Description = row.Description,
-        ParsedFrom = row.ParsedFrom ?? string.Empty,
-        RetrievedAt = row.RetrievedAt ?? default,
-    };
-
-    public static JobListing ToListing(string jobId, string url, string? title, string? company, string? location, string? listedAt) => new()
-    {
-        JobId = jobId,
-        Url = new Uri(url),
-        Title = title,
-        Company = company,
-        Location = location,
-        ListedAt = listedAt,
     };
 
     /// <summary>
