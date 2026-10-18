@@ -10,7 +10,7 @@ public static class DatabaseInitializer
     /// Creates the database folder and file if missing, and applies any migrations not applied yet.
     /// Call once at start-up.
     /// </summary>
-    /// <returns>A line describing the database, for the console.</returns>
+    /// <returns>A line describing the database.</returns>
     public static async Task<string> InitializeDatabaseAsync(this IServiceProvider services, CancellationToken ct = default)
     {
         var path = services.GetRequiredService<IOptions<DatabaseSettings>>().Value.FullPath;

@@ -120,15 +120,6 @@ public sealed class AcquisitionView
         };
     }
 
-    /// <summary>The acquisition was started by the console app: the web page cannot stop it.</summary>
-    public bool StartedFromConsole
-    {
-        get
-        {
-            return Listing is not null && Listing.StartedBy == JournalStarter.Console;
-        }
-    }
-
     /// <summary>Saved pages archived in step 1.</summary>
     public int PagesArchived
     {
@@ -197,23 +188,6 @@ public sealed class AcquisitionView
         get
         {
             return Listing?.StartedAt;
-        }
-    }
-
-    /// <summary>Who started it, in words.</summary>
-    public string StartedBy
-    {
-        get
-        {
-            if (Listing is null)
-            {
-                return string.Empty;
-            }
-            if (Listing.StartedBy == JournalStarter.Console)
-            {
-                return "the console";
-            }
-            return "the web or API";
         }
     }
 

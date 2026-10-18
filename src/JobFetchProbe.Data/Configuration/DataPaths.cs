@@ -4,7 +4,7 @@ using Microsoft.Extensions.Configuration.Memory;
 namespace JobFetchProbe.Data.Configuration;
 
 /// <summary>
-/// One setting, Paths:DataRoot, places every folder and file the apps read or write (the console app and the API):
+/// One setting, Paths:DataRoot, places every folder and file the apps read or write:
 /// <code>
 /// &lt;DataRoot&gt;\database\jobs.db      Database:Path
 /// &lt;DataRoot&gt;\input\                FetchJobListing:Folder          (save search result pages here)

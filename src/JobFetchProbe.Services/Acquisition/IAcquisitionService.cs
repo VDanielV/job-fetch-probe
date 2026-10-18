@@ -1,5 +1,4 @@
 using JobFetchProbe.Models.Acquisition;
-using JobFetchProbe.Models.Journal;
 
 namespace JobFetchProbe.Services.Acquisition;
 
@@ -15,8 +14,7 @@ public interface IAcquisitionService
     /// </summary>
     Task<bool> IsRunningAsync(CancellationToken ct = default);
 
-    /// <param name="startedBy">Who started it, as shown in the journal.</param>
     /// <param name="observer">Told about each step as it goes.</param>
     /// <param name="ct">Stops step 2 after the current job; what was read so far is kept.</param>
-    Task<AcquisitionResult> RunAsync(JournalStarter startedBy, IAcquisitionObserver observer, CancellationToken ct = default);
+    Task<AcquisitionResult> RunAsync(IAcquisitionObserver observer, CancellationToken ct = default);
 }

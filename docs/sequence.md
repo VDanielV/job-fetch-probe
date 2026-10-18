@@ -24,7 +24,7 @@ sequenceDiagram
 
     Client->>Ctl: POST api/JobFetcher
     Note over Client,Ctl: §5.1 no Idempotency-Key, a retry is a new request
-    Ctl->>Run: TryStartAsync(Api)
+    Ctl->>Run: TryStartAsync()
     Run->>Acq: IsRunningAsync()
     Acq->>Jnl: IsAnyRunActiveAsync()
     Jnl->>Db: runs still Running (both steps)
@@ -32,18 +32,18 @@ sequenceDiagram
     Jnl-->>Acq: active? (Running and a sign of life in the last 2 min)
     Acq-->>Run: true / false
     Note over Run,Acq: §5.5 check, then start: two starts in the same second can both pass
-    alt an acquisition is running (here, or in the console app)
+    alt an acquisition is running (here, or in another API instance)
         Run-->>Ctl: AcquisitionStart(AlreadyRunning)
         Ctl-->>Client: 409 Conflict (problem details)
     else nothing running
-        Run-)Acq: RunAsync(Api, LoggingAcquisitionObserver, token) on a background task
+        Run-)Acq: RunAsync(LoggingAcquisitionObserver, token) on a background task
         Run-->>Ctl: AcquisitionStart(Started)
         Ctl-->>Client: 202 Accepted, Location /api/Journal/runs
         Note over Client,Ctl: §5.3 no acquisition id to follow
 
         rect rgb(239, 246, 255)
         Note over Acq,Db: Step 1, FetchJobListing: saved pages to listing (no network)
-        Acq->>Jnl: StartJobListingRunAsync(Api)
+        Acq->>Jnl: StartJobListingRunAsync()
         Jnl-->>Acq: recorder (run id)
         Acq->>S1: FetchAsync(progress, token)
         S1->>Fs: ListPending()
@@ -65,7 +65,7 @@ sequenceDiagram
         rect rgb(245, 243, 255)
         Note over Acq,Db: Step 2, FetchJobDetails: one job at a time, behind the circuit breaker
         Note over Acq,S2: §5.2 starts at once even if the last run stopped on refusals a minute ago
-        Acq->>Jnl: StartJobDetailsRunAsync(Api)
+        Acq->>Jnl: StartJobDetailsRunAsync()
         Jnl-->>Acq: recorder (run id)
         Acq->>S2: FetchAsync(progress, token)
         S2->>Db: GetUnreadAsync()
@@ -113,8 +113,6 @@ sequenceDiagram
         Note over Run,S2: the same as the Stop button, then the API exits
     end
 ```
-
-The console app follows the same path from `AcquisitionService` on: `PipelineConsole` calls `IsRunningAsync()` (exit code 4 if an acquisition is running), then `RunAsync(Console, PipelineConsole, token)` directly, without a runner, and prints instead of logging. Ctrl+C cancels the token during step 2.
 
 ## 2. Following a run through the journal
 

@@ -12,7 +12,7 @@ namespace JobFetchProbe.Infrastructure;
 
 public static class DependencyInjection
 {
-    /// <summary>For the console app: the HTTP client, saved pages and the input folder, with their settings. The database is added by JobFetchProbe.Data; step 2's rules by <c>AddServices</c>.</summary>
+    /// <summary>For the API, which runs acquisitions: the HTTP client, saved pages and the input folder, with their settings. The database is added by JobFetchProbe.Data; step 2's rules by <c>AddServices</c>.</summary>
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         services.TryAddSingleton(TimeProvider.System);

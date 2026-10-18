@@ -11,7 +11,6 @@ namespace JobFetchProbe.Models.Journal;
 public sealed record JobDetailsJournalRun
 {
     public long RunId { get; init; }
-    public JournalStarter StartedBy { get; init; }
     public DateTimeOffset StartedAt { get; init; }
     public DateTimeOffset LastSeenAt { get; init; }
     public DateTimeOffset? FinishedAt { get; init; }

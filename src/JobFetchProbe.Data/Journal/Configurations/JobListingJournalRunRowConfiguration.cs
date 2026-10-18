@@ -11,7 +11,6 @@ internal sealed class JobListingJournalRunRowConfiguration : IEntityTypeConfigur
     {
         builder.ToTable("JobListingJournalRuns");
         builder.HasKey(r => r.Id);
-        builder.Property(r => r.StartedBy).IsRequired().HasMaxLength(16);
         builder.Property(r => r.State).IsRequired().HasMaxLength(16);
         builder.Property(r => r.ErrorType).HasMaxLength(256);
         builder.HasIndex(r => r.State);

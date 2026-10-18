@@ -5,8 +5,8 @@ namespace JobFetchProbe.Services.Acquisition;
 
 /// <summary>
 /// Told what an acquisition is doing, in order: step 1 starting, its journal run, each page, its result; then the
-/// same for step 2. Called on the thread that runs the acquisition, so whatever it prints comes out in order.
-/// The console prints it; another caller (the API, later) can show it in its own way.
+/// same for step 2. Called on the thread that runs the acquisition, so whatever it writes comes out in order.
+/// The API writes it to its log (<see cref="LoggingAcquisitionObserver"/>).
 /// </summary>
 public interface IAcquisitionObserver
 {

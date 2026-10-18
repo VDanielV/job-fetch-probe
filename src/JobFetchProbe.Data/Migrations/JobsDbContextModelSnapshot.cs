@@ -282,11 +282,6 @@ namespace JobFetchProbe.Data.Migrations
                     b.Property<DateTimeOffset>("StartedAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("StartedBy")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("State")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -395,11 +390,6 @@ namespace JobFetchProbe.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTimeOffset>("StartedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("StartedBy")
-                        .IsRequired()
-                        .HasMaxLength(16)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("State")

@@ -1,12 +1,12 @@
 # Spec: JobFetchProbe
 
-.NET 10 console app that runs one flow and exits:
+.NET 10 web app and REST API that run one flow, an **acquisition**, each time it is started from the web page (or `POST api/JobFetcher`):
 
 1. **Step 1, saved search pages → job links.** Reads every search results page saved into the input folder, stores the job links they contain in a SQLite database, and moves each page read to the archive folder.
 2. **Step 2, job links → job descriptions.** Reads every job in the database without a description, one at a time, politely and behind a circuit breaker, and stores each description, its details and the job's status.
 3. **Summary** with the totals.
 
-There are no commands, options or arguments. A separate, read-only web app (`JobFetchProbe.Web`) shows the stored jobs, and a REST API (`JobFetchProbe.Api`) returns them as JSON and can start the same acquisition in the background (`POST api/JobFetcher`). This spec describes the current code. It follows [`plan.md`](plan.md). The original probe spec is kept in Git history under the tag `probe-v1`.
+The API (`JobFetchProbe.Api`) runs the acquisition in the background, records it in a journal, and returns the stored jobs as JSON. The web app (`JobFetchProbe.Web`) starts, follows and stops an acquisition and shows the stored jobs; it talks only to the API. The console app that ran the acquisition until 18 Oct 2026 was removed. This spec describes the current code. It follows [`plan.md`](plan.md). The original probe spec is kept in Git history under the tag `probe-v1`.
 
 ## Solution layout
 
@@ -22,8 +22,9 @@ job-fetch-probe/
       FetchJobListing/  JobSearchBatch.cs  BatchSource.cs  JobListingFetchResult.cs  JobListingFileResult.cs  JobListingFetchProgress.cs   (step 1)
       FetchJobDetails/  JobDetailsFetchResult.cs  JobDetailsFetchEvent.cs  JobDetailsFetchEventKind.cs                         (step 2)
       Acquisition/      AcquisitionResult.cs  AcquisitionStart.cs  AcquisitionStartState.cs                                 (both steps)
+                        AcquisitionStop.cs  AcquisitionStopState.cs
       Catalog/   JobSummary.cs  JobSummaryPage.cs  StoredJob.cs                          (web app, api)
-      Journal/   JournalStep.cs  JournalRunState.cs  JournalStarter.cs  JournalCircuitState.cs  JournalRunSummary.cs
+      Journal/   JournalStep.cs  JournalRunState.cs  JournalCircuitState.cs  JournalRunSummary.cs
                  JobListingJournalRun.cs  JobListingJournalEntry.cs  JobListingJournalOutcome.cs
                  JobDetailsJournalRun.cs  JobDetailsJournalEntry.cs  JobDetailsJournalEntryKind.cs
     JobFetchProbe.Services/
@@ -47,25 +48,23 @@ job-fetch-probe/
       Acquisition/      IAcquisitionService.cs  AcquisitionService.cs  IAcquisitionObserver.cs  CallbackProgress.cs   (step 1 → step 2)
                         IAcquisitionRunner.cs  AcquisitionRunner.cs  LoggingAcquisitionObserver.cs              (api: in the background)
     JobFetchProbe.Infrastructure/
-      DependencyInjection.cs   AddInfrastructure (console)
+      DependencyInjection.cs   AddInfrastructure (api)
       Http/      HttpPageFetcher.cs  HttpClientSettings.cs
       Files/     SavedPageReader.cs
       FetchJobListing/  InputFolder.cs  FetchJobListingSettings.cs
     JobFetchProbe.Data/
-      DependencyInjection.cs   AddJobStore (console and api, read-write) · AddJobCatalog (read-only, for an app that only reads)
+      DependencyInjection.cs   AddJobStore (api, read-write) · AddJobCatalog (read-only, for an app that only reads)
       JobsDbContext.cs  DatabaseSettings.cs  DatabaseInitializer.cs  JobRowMapping.cs  DesignTimeJobsDbContextFactory.cs
       Configuration/   DataPaths.cs
       Entities/        JobRow.cs  JobDetailRow.cs  JobStatus.cs  ListingRow.cs  ListingSourceRow.cs  ListingJobRow.cs
       Configurations/  <Row>Configuration.cs, one IEntityTypeConfiguration per table
       Repositories/    SqliteBatchRepository.cs  SqliteJobRepository.cs  SqliteJobCatalog.cs
-      Migrations/      InitialCreate, RemoveSearchesAndListingProgress, AddJournal, JobsDbContextModelSnapshot.cs
+      Migrations/      InitialCreate, RemoveSearchesAndListingProgress, AddJournal, AddJournalSummary, RemoveJournalStarter,
+                       JobsDbContextModelSnapshot.cs
       Journal/         JournalRowMapping.cs
         Entities/        JobListingJournalRunRow.cs  JobListingJournalEntryRow.cs  JobDetailsJournalRunRow.cs  JobDetailsJournalEntryRow.cs
         Configurations/  one per journal table
         Repositories/    SqliteJournalRepository.cs
-    JobFetchProbe.Console/
-      Program.cs  PipelineConsole.cs  FetchJobListingConsole.cs  FetchJobDetailsConsole.cs
-      ConsolePaths.cs  ConsoleLog.cs  appsettings.json
     JobFetchProbe.Web/
       Program.cs  appsettings.json  Properties/launchSettings.json
       Api/       IJobCatalogClient.cs  JobCatalogClient.cs  IJobFetcherClient.cs  JobFetcherClient.cs  IJournalClient.cs  JournalClient.cs
@@ -90,7 +89,7 @@ job-fetch-probe-data/              Paths:DataRoot
     archived/                      FetchJobListing:ArchiveFolder: pages already read
 ```
 
-`DataPaths` (Data/Configuration, used by the console app and the API) adds these three paths as an in-memory configuration source **underneath** all others (index 0), computed from the final value of `Paths:DataRoot`. A path set in `appsettings.json` or an environment variable therefore still wins on its own. Without `Paths:DataRoot`, each setting is used as given (or its code default). At start-up the app creates `input` and `input/archived` and prints `Data folder: …`.
+`DataPaths` (Data/Configuration, used by the API) adds these three paths as an in-memory configuration source **underneath** all others (index 0), computed from the final value of `Paths:DataRoot`. A path set in `appsettings.json` or an environment variable therefore still wins on its own. Without `Paths:DataRoot`, each setting is used as given (or its code default). At start-up the API creates `input` and `input/archived`.
 
 Conventions:
 
@@ -101,13 +100,13 @@ Conventions:
 ## Dependencies
 
 ```text
-Console ──► Services (IAcquisitionService) ──► Models
-   │            ▲  ▲
-   ├──► Infrastructure    (implements IPageFetcher, ISavedPageReader, IInputFolder)        Program.cs only
-   └──► Data ─────────┘   (implements IBatchRepository, IJobRepository, IJobCatalog)       Program.cs only
-
-Web ──HTTP──► Api ──► Services (IJobRetriever → IJobCatalog) ; Api/Program.cs ──► Data (registration only)
-               Api ──► Services (IJournalService → IJournalRepository ◄── Data)          journal; the console writes it
+Web ──HTTP──► Api ──► Services (IJobRetriever → IJobCatalog)                         reading jobs
+               Api ──► Services (IJournalService → IJournalRepository)                journal
+               Api ──► Services (IAcquisitionRunner → IAcquisitionService) ──► Models  acquisition; it writes the journal
+                          ▲  ▲
+                          │  └── Infrastructure  (implements IPageFetcher, ISavedPageReader, IInputFolder)
+                          └───── Data            (implements IBatchRepository, IJobRepository, IJobCatalog, IJournalRepository)
+               Api/Program.cs ──► Data, Infrastructure                                registration only
 ```
 
 | Project | References | Packages |
@@ -116,28 +115,24 @@ Web ──HTTP──► Api ──► Services (IJobRetriever → IJobCatalog) ;
 | Services | Models | `Microsoft.Extensions.Hosting.Abstractions` 10.0.0 (the runner is a hosted service), `Microsoft.Extensions.DependencyInjection.Abstractions` 10.0.0, `Microsoft.Extensions.Logging.Abstractions` 10.0.0 (journal warnings), `Microsoft.Extensions.Options.ConfigurationExtensions` 10.0.0 (step 2's settings) |
 | Infrastructure | Services | `Microsoft.Extensions.Http` 10.0.0, `Microsoft.Extensions.Options.ConfigurationExtensions` 10.0.0 |
 | Data | Services | `Microsoft.EntityFrameworkCore.Sqlite` 10.0.13, `Microsoft.Extensions.Configuration` 10.0.0, `Microsoft.Extensions.Options.ConfigurationExtensions` 10.0.0 |
-| Console | Services, Infrastructure, Data | `Microsoft.Extensions.Hosting` 10.0.0, `Microsoft.EntityFrameworkCore.Design` 10.0.13 (design time only, `PrivateAssets=all`) |
 | Web | Models | none (`Microsoft.NET.Sdk.Web`: ASP.NET Core shared framework, which includes `IHttpClientFactory`) |
-| Api | Services, Data, Infrastructure (the last two only for `Program.cs`) | `Microsoft.AspNetCore.OpenApi` 10.0.13 (`Microsoft.NET.Sdk.Web`) |
+| Api | Services, Data, Infrastructure (the last two only for `Program.cs`) | `Microsoft.AspNetCore.OpenApi` 10.0.13 (`Microsoft.NET.Sdk.Web`), `Microsoft.EntityFrameworkCore.Design` 10.0.13 (design time only, `PrivateAssets=all`: the startup project for `dotnet ef`) |
 
-Only the console's `Program.cs` refers to Infrastructure and Data, to register them; its other classes use Services and Models only (Console → Services → (Data | Infrastructure)). Services never use `HttpClient`, files or the database directly; everything outside goes through `Services/Abstractions`, which Infrastructure and Data implement. The web app references only Models and reads through the API; the API's controllers use only Services. Neither can reach the console's HTTP client or the input folder.
+Only the API's `Program.cs` refers to Infrastructure and Data, to register them; its controllers use Services and Models only (Api → Services → (Data | Infrastructure)). Services never use `HttpClient`, files or the database directly; everything outside goes through `Services/Abstractions`, which Infrastructure and Data implement. The web app references only Models and reaches everything through the API.
 
 ## Run
 
-`dotnet run --project src/JobFetchProbe.Console`, or the built `job-fetch-probe` executable. Arguments are ignored.
+`dotnet run --project src/JobFetchProbe.Api` and `dotnet run --project src/JobFetchProbe.Web` (Visual Studio: the **Web + Api** profile).
 
-1. Build the host (content root = build output folder, so `appsettings.json` is always found), apply `DataPaths`, register services and infrastructure.
-2. Create the data folders; print `Data folder: …`.
-3. `InitializeDatabaseAsync`: create the database folder and file if missing, apply pending migrations; print `Database: …` (with `schema updated, N migration(s) applied` when it did).
-4. `PipelineConsole.RunAsync` calls `IAcquisitionService.RunAsync` (Services): step 1, then step 2 (always, whatever step 1 found), each in its own DI scope and recorded in the journal; `PipelineConsole` is the `IAcquisitionObserver` and prints what it is told through `FetchJobListingConsole` and `FetchJobDetailsConsole`, then the summary. Ctrl+C is caught only during step 2 and cancels the token passed to `RunAsync`. Before anything else, `IAcquisitionService.IsRunningAsync` is asked: if an acquisition is running (a run of either step `Running` in the journal with a sign of life in the last 2 minutes, e.g. one started from the API), the console prints so and exits with 4.
+1. The API builds its host, applies `DataPaths`, registers Services, Infrastructure and Data; settings are validated at start-up (`ValidateOnStart`).
+2. It creates the data folders, then `InitializeDatabaseAsync`: creates the database folder and file if missing, applies pending migrations, and logs `Database: …` (with `schema updated, N migration(s) applied` when it did).
+3. An acquisition starts with the web page's **Start acquisition** button (`POST api/JobFetcher`); see [API](#api) for `AcquisitionRunner`. `IAcquisitionService.RunAsync` runs step 1, then step 2 (unless step 1 was stopped), each in its own DI scope and recorded in the journal; `LoggingAcquisitionObserver` writes what it is told to the API's log.
+4. It stops when it is done, when the circuit breaker gives up, with the **Stop** button (`POST api/JobFetcher/stop`), or when the API stops; in every case what was stored stays stored.
 
-| Exit code | Meaning |
+| API exit code | Meaning |
 | --- | --- |
-| 0 | Nothing left to do: no page kept in the input folder, and no job left to read (every job `Read` or `Gone`) |
-| 1 | Something is left for the next run: a page kept in the input folder, or jobs still `Pending`, `Blocked` or `Failed` |
-| 2 | Configuration error (`OptionsValidationException`) |
-| 3 | Database error: the file is locked, read-only, damaged or not a database (`SqliteException`, `DbUpdateException`) |
-| 4 | Another acquisition is running (started from the API); nothing was done |
+| 0 | Stopped normally (Ctrl+C in its window, or closed by Visual Studio) |
+| 2 | Configuration error at start-up (`OptionsValidationException`): `Configuration error: …` |
 
 ## Step 1, FetchJobListing: saved search pages → job listing (`JobListingFetcher`)
 
@@ -150,7 +145,7 @@ Only the console's `Program.cs` refers to Infrastructure and Data, to register t
 4. If at least one page was read, **store** the listing with `IBatchRepository.SaveAsync`, in one transaction: a `Listings` row (`BatchId` = local time `yyyyMMdd_HHmmss`, `_2`, `_3`… if taken), one `ListingSources` row per page, one `ListingJobs` row per job (as its card showed it), and a `Pending` row in `Jobs` for every job not seen before. A job not read yet gets its title, company, location and URL updated from the card; a job already `Read` keeps its page data.
 5. Only after that, **archive** each page read: move it to `FetchJobListing:ArchiveFolder`, together with the `<name>_files` folder the browser saves next to a "complete" page. If the archive already has that name, the moved file becomes `<name>_<yyyyMMdd_HHmmss><ext>` (then `_2`, `_3`…); nothing is overwritten.
 
-Pages that could not be read **stay in the input folder** with the reason printed, and are tried again on the next run. If the database cannot be written, the run ends with exit code 3 and nothing is archived.
+Pages that could not be read **stay in the input folder** with the reason logged and shown on the web page, and are tried again on the next run. If the database cannot be written, the run ends `Failed` (the error in the journal and the web page's red pane) and nothing is archived.
 
 **Stopping step 1** (the web page's Stop button, or the API stopping): the step stops between two pages, before storing anything (`JobListingFetchResult.Stopped`). Nothing is stored and no page is archived, so every page stays in the input folder for the next run; the journal run ends `Stopped`, and step 2 does not start (`AcquisitionResult.JobDetails` is null). Once every page is read, the store and the archiving are not interrupted.
 
@@ -204,7 +199,7 @@ Page level: `Query` from the address's `keywords` value, `TotalResults` from a p
    - HTTP 404 or 410 → `SaveFailureAsync(gone: true)`: status `Gone`, not tried again;
    - refused → status `Blocked`; any other failure → status `Failed`; both with the message and time, tried again on the next run.
    A stored description is never replaced by a later failure. Saving is never cancelled half-way.
-4. The run ends when the list is done, the circuit breaker stops it, or it is stopped (Ctrl+C on the console, the web page's Stop button, or the API stopping): the stop is checked before each job, a pause or cooldown ends at once, and a request in flight is cancelled; the reason is "cancelled by the user". Jobs not tried stay as they were and are first in line next time.
+4. The run ends when the list is done, the circuit breaker stops it, or it is stopped (the web page's Stop button, or the API stopping): the stop is checked before each job, a pause or cooldown ends at once, and a request in flight is cancelled; the reason is "cancelled by the user". Jobs not tried stay as they were and are first in line next time.
 
 ### Status of a job (`Jobs.Status`)
 
@@ -302,14 +297,13 @@ ASP.NET Core Razor Pages. It reads the jobs and can start an acquisition, always
 - **Divider and rows** (`wwwroot/js/split.js`, the only script): the divider between table and pane (`role="separator"`, focusable) is dragged with the pointer or moved with the arrow keys (Shift for larger steps); the pane is 280 px or wider and the table keeps at least 480 px. The width is stored in `localStorage` (`jobfetchprobe.paneWidth`); double-click resets it to 440 px. A click anywhere on a row follows the row's link. Without the script everything works except dragging. On a narrow table, container queries hide Posted (below 760 px) and Location (below 620 px).
 - **`/acquire`** (`Pages/Acquire`): starts an acquisition, follows it and stops it.
   - **Explanation pane** (`Shared/_AcquireExplanation`): a paragraph and three step cards. Shown when no acquisition is starting or running and the page follows none; otherwise folded into a "How it works" `<details>`.
-  - **Launch box**: the **Start acquisition** button (a form POST with the antiforgery token; green → teal → blue gradient) and the last acquisition's state, time, who started it and its journal message. The button is disabled ("Running…") while an acquisition is starting or running. The **Stop** button (red outline, ■) sits next to it only while an acquisition started from the web is running (not while it is merely starting, and not for a console run); after pressing it, it shows "Stopping…" (`?stopping=true`) until the run ends.
-  - **Amber card**: while a console run is going, "An acquisition started from the console is running. It can only be stopped there, with Ctrl+C."
+  - **Launch box**: the **Start acquisition** button (a form POST with the antiforgery token; green → teal → blue gradient) and the last acquisition's state, time and its journal message. The button is disabled ("Running…") while an acquisition is starting or running. The **Stop** button (red outline, ■) sits next to it only while an acquisition is running (not while it is merely starting); after pressing it, it shows "Stopping…" (`?stopping=true`) until the run ends.
   - **POST** (`OnPostAsync`): `IJobFetcherClient.StartAsync`. Started → redirect to `/acquire?since=<unix seconds>` with a green banner; 409 → redirect to `/acquire` with an amber banner and the API's message; API not reachable or API error → a red banner. **POST Stop** (`OnPostStopAsync`): `IJobFetcherClient.StopAsync`; Stopping → amber "Stop requested" banner, redirect keeping `since`; NotRunning → amber banner with the API's message. Banners travel in TempData (post, redirect, get), so reloading never sends a request twice.
   - **GET** (`OnGetAsync`): `GET api/Journal/runs?take=6`, then the newest step 1 and step 2 runs in full. `AcquisitionView` pairs them (a step 2 run older than the step 1 run belongs to an earlier acquisition), decides whether the acquisition is starting (pushed less than 60 s ago, not in the journal yet), running (either run `Running`, or step 1 completed less than 30 s ago and step 2 not started) or ended, and builds the panes.
   - **Acquisition pane**: shown while an acquisition is starting or running, whoever started it, and after pushing the button (`?since`). Heading with a pulsing dot while running; how it ended (Completed green; Stopped amber, with the reason, "wait an hour or more" when the circuit breaker gave up, or "stopped during step 1"); three **tabs**, plain links (`?tab=progress|run|summary`, kept by the refresh): Progress while it runs, Summary once it has ended, unless one was chosen.
     - **Progress** (`Shared/_AcquireProgress`): step 1 (state, pages read and kept, job links stored and new, listing id); step 2 (job n of N or n of N tried, ok and failed, time left, not tried, the circuit and the time to its trial request, a gradient progress bar); the last 8 entries of both steps (`AcquisitionView.ActivityLines`), newest first.
     - **Whole run** (`Shared/_AcquireWholeRun`): every entry of both steps, oldest first, under "Step 1 · Job links" and "Step 2 · Descriptions"; the tab shows the count.
-    - **Summary** (`Shared/_AcquireSummary`), the console's summary: input pages (found, read and archived, kept, with each kept page's reason), job links (stored as listing, new), descriptions (read, failed, not tried; stored in total and still to read, from the run's `TotalRead` and `StillUnread`), requests and step 2's duration with the circuit openings, and the result (complete; completed with something left; stopped early and why). While running it says the figures are so far.
+    - **Summary** (`Shared/_AcquireSummary`), the acquisition's summary: input pages (found, read and archived, kept, with each kept page's reason), job links (stored as listing, new), descriptions (read, failed, not tried; stored in total and still to read, from the run's `TotalRead` and `StillUnread`), requests and step 2's duration with the circuit openings, and the result (complete; completed with something left; stopped early and why). While running it says the figures are so far.
     - Links to Overview and the journal run ids; **Close** returns to `/acquire`.
   - **Red error pane** (`Shared/_ErrorPane`, `PageError`), at the end of the page, with the kind of error, what it usually means, the error's message and its type: a failed run (kind from the journal's `ErrorType`: configuration `OptionsValidationException`, database `Sqlite…`/`EntityFrameworkCore…`, files `System.IO.…`/`UnauthorizedAccessException`, otherwise unexpected), an abandoned run, an API error answer (`ApiErrorException`, from the `errorType` of the 500 problem details) or an API that is not reachable (with the hint that a configuration error stops the API at start-up).
   - **Refresh**: while starting or running, the page adds `<meta http-equiv="refresh" content="15">` through the layout's `Head` section; no script.
@@ -318,18 +312,18 @@ ASP.NET Core Razor Pages. It reads the jobs and can start an acquisition, always
 
 ## API (`JobFetchProbe.Api`)
 
-ASP.NET Core controllers. `dotnet run --project src/JobFetchProbe.Api` → <http://localhost:5081>. Configuration: `Paths:DataRoot`, `FetchJobDetails` and `HttpClient` in its own `appsettings.json` (`DataPaths` derives `Database:Path` and the input folders as for the console app). At start-up it creates the data folders and runs `InitializeDatabaseAsync` (database created or migrated, `Database: …` logged); a bad setting (`ValidateOnStart`) stops it with `Configuration error: …` and exit code 2. It is the web app's only source of data. `JobFetchProbe.Api.http` holds sample requests.
+ASP.NET Core controllers. `dotnet run --project src/JobFetchProbe.Api` → <http://localhost:5081>. Configuration: `Paths:DataRoot`, `FetchJobDetails` and `HttpClient` in its own `appsettings.json` (`DataPaths` derives `Database:Path` and the input folders). At start-up it creates the data folders and runs `InitializeDatabaseAsync` (database created or migrated, `Database: …` logged); a bad setting (`ValidateOnStart`) stops it with `Configuration error: …` and exit code 2. It is the web app's only source of data. `JobFetchProbe.Api.http` holds sample requests.
 
 `JobFetcherController` (route `api/JobFetcher`) depends only on `IAcquisitionRunner`:
 
 | Action | Request | Responses |
 | --- | --- | --- |
 | `Start` | `POST api/JobFetcher` | `202 AcquisitionStart` (`state` `Started`, `at`, `message`), `Location: /api/Journal/runs`: the acquisition runs in the background. `409 ProblemDetails` ("Acquisition already running") if one is running in this process, or anywhere according to the journal. |
-| `Stop` | `POST api/JobFetcher/stop` | `202 AcquisitionStop` (`state` `Stopping`, `at`, `message`): the acquisition started here stops (step 1 between pages, step 2 after the current job, at once during a pause or cooldown) and ends `Stopped`. `409 ProblemDetails` ("Nothing to stop") when nothing runs here; when the console app runs one, the message says to stop it there with Ctrl+C. |
+| `Stop` | `POST api/JobFetcher/stop` | `202 AcquisitionStop` (`state` `Stopping`, `at`, `message`): the acquisition started here stops (step 1 between pages, step 2 after the current job, at once during a pause or cooldown) and ends `Stopped`. `409 ProblemDetails` ("Nothing to stop", "No acquisition is running.") when nothing runs here. |
 
 Errors the other handlers leave go to `UnexpectedErrorHandler`: `500 ProblemDetails` with `detail` = the error's message and the extension `errorType` = its type (for example `Microsoft.Data.Sqlite.SqliteException`), also logged. The API only runs on the owner's computer, so messages are shown as they are.
 
-`AcquisitionRunner` (Services/Acquisition, singleton and hosted service, registered by `AddAcquisitionRunner()`): `TryStartAsync` checks and starts under a semaphore (one check-and-start at a time), refuses while its own run is going or while `IAcquisitionService.IsRunningAsync` is true, then starts `IAcquisitionService.RunAsync(JournalStarter.Api, LoggingAcquisitionObserver, token)` on a background task. Each run gets its own cancellation source, linked to the application's: `TryStopAsync` cancels it (under the same semaphore; `NotRunning` when nothing runs here, with the console hint when the journal shows a console run), and `StopAsync` (application stopping) cancels them all and waits for the run within the host's shutdown timeout. Either way the run ends `Stopped`, "cancelled by the user". `LoggingAcquisitionObserver` writes one log line per page, job, circuit change and result.
+`AcquisitionRunner` (Services/Acquisition, singleton and hosted service, registered by `AddAcquisitionRunner()`): `TryStartAsync` checks and starts under a semaphore (one check-and-start at a time), refuses while its own run is going or while `IAcquisitionService.IsRunningAsync` is true, then starts `IAcquisitionService.RunAsync(LoggingAcquisitionObserver, token)` on a background task. Each run gets its own cancellation source, linked to the application's: `TryStopAsync` cancels it (under the same semaphore; `NotRunning` when nothing runs here), and `StopAsync` (application stopping) cancels them all and waits for the run within the host's shutdown timeout. Either way the run ends `Stopped`, "cancelled by the user". `LoggingAcquisitionObserver` writes one log line per page, job, circuit change and result.
 
 `JobCatalogController` (`[ApiController]`, route `api/JobCatalog`, JSON with camelCase names) depends only on `IJobRetriever`:
 
@@ -344,7 +338,7 @@ Both return `503 ProblemDetails` ("No database yet", `application/problem+json`)
 
 | Action | Request | Responses |
 | --- | --- | --- |
-| `GetRuns` | `GET api/Journal/runs?take=` | `200 JournalRunSummary[]`: `step`, `runId`, `startedBy`, `startedAt`, `lastSeenAt`, `finishedAt`, `state`, `message`. `take` 1–50 (default 10), else 400. |
+| `GetRuns` | `GET api/Journal/runs?take=` | `200 JournalRunSummary[]`: `step`, `runId`, `startedAt`, `lastSeenAt`, `finishedAt`, `state`, `message`. `take` 1–50 (default 10), else 400. |
 | `GetJobListingRun` | `GET api/Journal/job-listing/runs/{runId}?after=` | `200 JobListingJournalRun` with `entries` after `after` (default 0); `404` if unknown. |
 | `GetJobDetailsRun` | `GET api/Journal/job-details/runs/{runId}?after=` | `200 JobDetailsJournalRun` with `entries` after `after`; `404` if unknown. |
 
@@ -356,16 +350,16 @@ In Development, `GET openapi/v1.json` serves the OpenAPI 3.1 description (`AddOp
 
 The progress of every run of each step, written while it runs and readable by another process at the same time. Isolated in its own folders: `Models/Journal`, `Services/Journal` + `Services/Abstractions/Journal`, `Data/Journal`, `Api/Controllers/JournalController`. The step folders do not refer to it.
 
-**Writing (the process that fetches).** `IJournalService.StartJobListingRunAsync(starter)` / `StartJobDetailsRunAsync(starter)` returns a recorder (`IJobListingRunRecorder`, `IJobDetailsRunRecorder`), which is an `IProgress<>` of the step's own progress type. The console passes every progress report to its printer and to the recorder, then calls `CompleteAsync(result)` (or `FailAsync(error)` when the step throws; disposing without either records Failed). Before a run starts, runs of the same step still `Running` with no sign of life for `AbandonedAfter` are marked `Abandoned`, and the step's older runs are pruned to `KeepRunsPerStep` (a TODO marks this for review).
+**Writing (the process that fetches).** `IJournalService.StartJobListingRunAsync()` / `StartJobDetailsRunAsync()` returns a recorder (`IJobListingRunRecorder`, `IJobDetailsRunRecorder`), which is an `IProgress<>` of the step's own progress type. `AcquisitionService` passes every progress report to its observer and to the recorder, then calls `CompleteAsync(result)` (or `FailAsync(error)` when the step throws; disposing without either records Failed). Before a run starts, runs of the same step still `Running` with no sign of life for `AbandonedAfter` are marked `Abandoned`, and the step's older runs are pruned to `KeepRunsPerStep` (a TODO marks this for review).
 
 - **Recorder → queue → repository.** Each report updates the recorder's copy of the run (counters, circuit breaker, message) and queues one write: the run's state, plus one entry when something happened. `JournalQueue` writes in order on one background task, so the fetch never waits; a failed write is logged once (then counted) and skipped. State and entry are saved separately, so a failed entry never loses the final state.
 - **Sign of life.** `SignOfLife` (a `PeriodicTimer`) refreshes `LastSeenAt` every `SignOfLifeEvery` (30 s) while the run is open, whatever the step is doing (a long pause or a 30-minute cooldown included).
 - **What is recorded.** Step 1: one entry per page read (`Read`, or `Kept` with the reason) and, at the end, per page archived (`Archived` with the destination, or `NotArchived` with the reason); the run holds pages, read, kept, job links stored, new jobs, listing id. Step 2: `Started`, one `Job` entry per request (job id, title, status, gone, message), `CircuitOpened` (with the cooldown), `CircuitHalfOpen`, `CircuitClosed`, `Stopped`, `Finished` (totals); the run holds total, to read, fetched, failed, requests, circuit state, `CircuitOpenUntil`, openings, ETA. The step's "still waiting" reports only refresh the run (no entry). A run stopped by the circuit breaker ends with the circuit `Open`.
-- **Never in the way.** If the journal cannot be started (database error), the recorder records nothing, a warning is logged and the console prints `Journal: not recorded this time …`; the step runs as usual.
+- **Never in the way.** If the journal cannot be started (database error), the recorder records nothing, a warning is logged and the API's log says `Journal: not recorded this time …`; the step runs as usual.
 
-**Reading (anyone).** `GetRecentRunsAsync(take)` (1–50, both steps, newest first), `GetJobListingRunAsync(id, after)`, `GetJobDetailsRunAsync(id, after)` (the run plus its entries with id greater than `after`; null if unknown). A run still `Running` whose `LastSeenAt` is older than `AbandonedAfter` (2 minutes) is returned as `Abandoned` with "No sign of life since …". `JournalUnavailableException` when the database file does not exist; a database without the journal tables (not yet upgraded by the console) reads as empty.
+**Reading (anyone).** `GetRecentRunsAsync(take)` (1–50, both steps, newest first), `GetJobListingRunAsync(id, after)`, `GetJobDetailsRunAsync(id, after)` (the run plus its entries with id greater than `after`; null if unknown). A run still `Running` whose `LastSeenAt` is older than `AbandonedAfter` (2 minutes) is returned as `Abandoned` with "No sign of life since …". `JournalUnavailableException` when the database file does not exist; a database without the journal tables (not yet upgraded by the API) reads as empty.
 
-`JournalOptions` (code defaults, `JournalOptions.Default`): `AbandonedAfter` 2 min, `SignOfLifeEvery` 30 s, `KeepRunsPerStep` 50. `AddJournal()` (Services) registers `JournalOptions` and `IJournalService` (singleton). The data layer registers `IJournalRepository` → `SqliteJournalRepository` in `AddJobStore` (read-write: console and API) and in `AddJobCatalog` (read-only). `IJournalService.IsAnyRunActiveAsync` tells whether a run of either step is `Running` and not abandoned; the acquisition uses it to refuse a second one.
+`JournalOptions` (code defaults, `JournalOptions.Default`): `AbandonedAfter` 2 min, `SignOfLifeEvery` 30 s, `KeepRunsPerStep` 50. `AddJournal()` (Services) registers `JournalOptions` and `IJournalService` (singleton). The data layer registers `IJournalRepository` → `SqliteJournalRepository` in `AddJobStore` (read-write: the API) and in `AddJobCatalog` (read-only). `IJournalService.IsAnyRunActiveAsync` tells whether a run of either step is `Running` and not abandoned; the acquisition uses it to refuse a second one.
 
 ## Infrastructure
 
@@ -417,17 +411,17 @@ Listings        BatchId PK · CreatedAt
 - **Contexts:** `IDbContextFactory<JobsDbContext>` (singleton factory); every repository call opens and disposes its own context, so nothing holds a connection between calls.
 - **Repositories** (`Repositories/`): `SqliteBatchRepository` (`IBatchRepository`, step 1), `SqliteJobRepository` (`IJobRepository`, step 2) and `SqliteJobCatalog` (`IJobCatalog`, read-only, for the API). They return models; no entity leaves the project.
 - **Migration namespace:** `JobFetchProbe.Data.Migrations`. EF Core identifies an applied migration by its ID in `__EFMigrationsHistory`, not by namespace, so databases created before the move to this project are not migrated again.
-- **Migrations** (`Migrations/`), applied at start-up: `InitialCreate`; `RemoveSearchesAndListingProgress` (drops the tables and columns of the removed search command and listing-based details step). `DesignTimeJobsDbContextFactory` lets the EF tools build the model without starting the app. After changing the rows or their configuration:
+- **Migrations** (`Migrations/`), applied at start-up: `InitialCreate`; `RemoveSearchesAndListingProgress` (drops the tables and columns of the removed search command and listing-based details step); `AddJournal`; `AddJournalSummary` (`StillUnread`, `TotalRead`, `ErrorType`); `RemoveJournalStarter` (drops `StartedBy` with SQLite's `ALTER TABLE … DROP COLUMN`, inside the migration's transaction, so the rows keep every other value). `DesignTimeJobsDbContextFactory` lets the EF tools build the model without starting the app. After changing the rows or their configuration:
 
   ```sh
-  dotnet ef migrations add <Name> --project src/JobFetchProbe.Data --startup-project src/JobFetchProbe.Console --output-dir Migrations
+  dotnet ef migrations add <Name> --project src/JobFetchProbe.Data --startup-project src/JobFetchProbe.Api --output-dir Migrations
   ```
 
-- EF Core's own log lines are filtered out (`Microsoft.EntityFrameworkCore` → `None`); a database failure prints `Database error: …` and exits with 3.
+- EF Core's own log lines are kept to warnings (`Microsoft.EntityFrameworkCore` → `Warning`); a database failure during an acquisition ends its runs `Failed`, and a failed request gets `500` problem details with the error's type.
 
 ## Configuration
 
-`src/JobFetchProbe.Console/appsettings.json`, copied to the build output. Environment variables override settings (`Paths__DataRoot=D:\job-data`). Command-line arguments are not used.
+`src/JobFetchProbe.Api/appsettings.json`, copied to the build output. Environment variables override settings (`Paths__DataRoot=D:\job-data`).
 
 | Key | Default | Validation |
 | --- | --- | --- |
@@ -436,21 +430,21 @@ Listings        BatchId PK · CreatedAt
 | `FetchJobListing:Folder` † | `<DataRoot>\input` | not empty |
 | `FetchJobListing:ArchiveFolder` † | `<DataRoot>\input\archived` | not empty, different from `FetchJobListing:Folder` |
 | `FetchJobListing:Patterns` | `*.html`, `*.htm` (code default) | at least one |
-| `FetchJobDetails:DelaySeconds` | `5` | 1 to 120 |
+| `FetchJobDetails:DelaySeconds` | `45` | 1 to 120 |
 | `FetchJobDetails:CircuitBreaker:FailureThreshold` | `3` | 1 to 20 |
-| `FetchJobDetails:CircuitBreaker:CooldownSeconds` | `300` | 1 to 14400 |
+| `FetchJobDetails:CircuitBreaker:CooldownSeconds` | `210` | 1 to 14400 |
 | `FetchJobDetails:CircuitBreaker:MaxCooldownSeconds` | `1800` | 1 to 86400 |
 | `FetchJobDetails:CircuitBreaker:StopAfterOpenings` | `3` | 1 to 10 |
 | `HttpClient:TimeoutSeconds` | `20` | 1 to 120 |
 | `HttpClient:UserAgent` | `JobFetchProbe/0.3 (personal study project)` | not empty |
 | `HttpClient:HandlerLifetimeMinutes` | `5` | none |
-| `Logging:LogLevel:Default` | `Warning` | none; keeps HttpClient request logs off the console |
+| `Logging:LogLevel:Default` | `Information` (`Microsoft.AspNetCore`, `Microsoft.EntityFrameworkCore`, `System.Net.Http.HttpClient`: `Warning`) | none; keeps request logs out of the API's window |
 
-Validation runs when the settings are first used. A failure prints `Configuration error: …` and exits with 2.
+Validation runs at the API's start-up. A failure logs `Configuration error: …` and exits with 2.
 
 ## Dependency injection
 
-Console: `AddServices(IConfiguration)` (Services: both steps, step 2's settings `FetchJobDetails` with their validation, `IAcquisitionService`), `AddInfrastructure(IConfiguration)` (Infrastructure: `FetchJobListing` and `HttpClient` settings, HTTP client, saved pages, input folder), `AddJournal()` (Services: `IJournalService`) and `AddJobStore(IConfiguration)` (Data: database settings, context factory, `IBatchRepository`, `IJobRepository`, `IJournalRepository`). Api: `AddServices(IConfiguration)`, `AddAcquisitionRunner()` (Services: `IAcquisitionRunner`, hosted), `AddJobRetriever()` (Services: `IJobRetriever` → `JobRetriever`), `AddJournal()`, `AddInfrastructure(IConfiguration)` and `AddJobStore(IConfiguration)` (Data, read-write; it also registers `IJobCatalog` → `SqliteJobCatalog`). `AddJobCatalog(IConfiguration)` (read-only) is no longer used by an app. Web: `JobCatalogApiSettings` and the typed client `IJobCatalogClient` only. Both Data methods share the private `AddDatabase`; `AddJobCatalog` opens the connection with `Mode=ReadOnly`. The console classes are singletons and only print; `Program.cs` builds `ConsolePaths` (database file, input and archive folders as full paths) for them. `AcquisitionService` creates one DI scope per step.
+Api: `AddServices(IConfiguration)` (Services: both steps, step 2's settings `FetchJobDetails` with their validation, `IAcquisitionService`), `AddAcquisitionRunner()` (Services: `IAcquisitionRunner`, hosted), `AddJobRetriever()` (Services: `IJobRetriever` → `JobRetriever`), `AddJournal()` (Services: `IJournalService`), `AddInfrastructure(IConfiguration)` (Infrastructure: `FetchJobListing` and `HttpClient` settings, HTTP client, saved pages, input folder) and `AddJobStore(IConfiguration)` (Data, read-write: database settings, context factory, `IBatchRepository`, `IJobRepository`, `IJournalRepository`, `IJobCatalog` → `SqliteJobCatalog`). `AddJobCatalog(IConfiguration)` (read-only) is no longer used by an app. Web: `JobCatalogApiSettings` and the typed clients `IJobCatalogClient`, `IJobFetcherClient`, `IJournalClient` only. Both Data methods share the private `AddDatabase`; `AddJobCatalog` opens the connection with `Mode=ReadOnly`. `AcquisitionService` creates one DI scope per step.
 
 | Registration | Lifetime |
 | --- | --- |
@@ -464,71 +458,53 @@ Console: `AddServices(IConfiguration)` (Services: both steps, step 2's settings 
 | `JournalOptions`, `IJournalService` → `JournalService`, `IJournalRepository` → `SqliteJournalRepository` | singleton (a recorder, with its queue and sign of life, lives for one run) |
 | `IAcquisitionService` → `AcquisitionService` | singleton (no state; a scope per step) |
 | `IAcquisitionRunner` → `AcquisitionRunner` (API) | singleton, also the hosted service that cancels the run when the API stops |
-| `PipelineConsole`, `FetchJobListingConsole`, `FetchJobDetailsConsole`, `ConsolePaths` | singleton |
 
-## Console output
+## API log
 
-Every line has a `[HH:mm:ss]` time; ok is green, warnings yellow, refusals red (no colours when output is redirected).
+`LoggingAcquisitionObserver` writes one log entry per event to the API's window (the default ASP.NET Core console logger: a category line, then the text; refusals and circuit changes as warnings). Backlog section 6A proposes one line per event with the time, and the summary.
 
 ```text
-[18:32:01] Data folder: C:\Code\job-fetcher\job-fetch-probe-data
-[18:32:01] Database: C:\Code\job-fetcher\job-fetch-probe-data\database\jobs.db
-
-===== Step 1: saved search pages → job links =====
-[18:32:01] Journal: run 12
-[18:32:01] [1/2] 197 .net jobs in Valencia.html: 100 jobs (100 new in this run)
-[18:32:01] [2/2] view-source_….html: kept in the input folder. the page only contains the selected job …
-[18:32:01] Stored 100 unique job links as listing 20261014_183201.
-[18:32:01] Archived 1 page(s) to C:\Code\job-fetcher\job-fetch-probe-data\input\archived
-
-===== Step 2: job links → job descriptions =====
-[18:32:02] Journal: run 9
-[18:32:02] 100 job(s) without a description in the database.
-[18:32:02] One request every 5s, about 10m 00s in total if the site keeps answering.
-[18:32:02] Circuit breaker: opens on a refusal or 3 failures in a row, waits 5m 00s (doubling, max 30m 00s), stops after 3 opening(s). Ctrl+C stops after the current job.
-[18:32:03] [   1/100]   1%  ok       4476446382  Senior .NET Developer · W Hunt España  (ok 1, failed 0, 99 to go, ~9m 54s left)
-[18:32:09] [   2/100]   2%  REFUSED  4476446383  (ok 1, failed 1, 98 to go, ~9m 48s left)
-[18:32:09] Circuit OPEN (1 of 3): es.linkedin.com refused the request for job 4476446383 (status 429: refusal or sign-in page).
-[18:32:09] No requests for 5m 00s, then one trial request. Ctrl+C stops now and keeps the progress.
-[18:32:39]   … circuit open, trial request in 4m 30s
-[18:37:09] Circuit HALF-OPEN: sending one trial request.
-[18:37:10] Circuit CLOSED: the trial request worked, continuing at the normal pace.
-[18:37:16] [   4/100]   4%  gone     4476446385  the job page no longer exists; not tried again  (…)
-
-===== Summary =====
-Input pages      2 found, 1 read and archived, 1 kept in the input folder
-Job links        100 stored as listing 20261014_183201
-Descriptions     97 read in this run, 3 failed, 0 not tried
-                 97 stored in total; 2 still to read (tried again on the next run)
-Requests         101 sent in 14m 12s, circuit breaker opened 1 time(s)
-Database         C:\Code\job-fetcher\job-fetch-probe-data\database\jobs.db
+info: …LoggingAcquisitionObserver[0]   Step 1: saved search pages → job links
+info: …LoggingAcquisitionObserver[0]   Journal: run 12
+info: …LoggingAcquisitionObserver[0]   [1/2] p.html: 6 jobs (6 new)
+info: …LoggingAcquisitionObserver[0]   Stored 6 unique job links as listing 20261018_131351; 2 page(s) archived.
+info: …LoggingAcquisitionObserver[0]   Step 2: job links → job descriptions
+info: …LoggingAcquisitionObserver[0]   6 job(s) without a description; one request every 00:00:45.
+info: …LoggingAcquisitionObserver[0]   [1/6] ok 1000001 Técnico/a de Desarrollo (5 to go)
+warn: …LoggingAcquisitionObserver[0]   [3/6] gone 1000003: the job page no longer exists
+warn: …LoggingAcquisitionObserver[0]   [5/6] REFUSED 1000005 (1 to go)
+warn: …LoggingAcquisitionObserver[0]   Circuit OPEN (1 of 3): es.linkedin.com refused the request for job 1000005 (status 999: …). No requests for 00:03:30.
+info: …LoggingAcquisitionObserver[0]   Circuit HALF-OPEN: sending one trial request.
+info: …LoggingAcquisitionObserver[0]   Circuit CLOSED: continuing at the normal pace.
+info: …LoggingAcquisitionObserver[0]   Descriptions: 5 read, 1 failed, 0 not tried; 0 still to read, 5 stored in total; 7 request(s), circuit opened 1 time(s).
+info: …AcquisitionRunner[0]            Acquisition finished: nothing left to do.
 ```
 
-An empty input folder prints `No saved pages in …. Nothing new to add.`; a database where every job is read prints `Every job in the database already has its description. Nothing to read.` When the run stops early, the summary adds `Stopped early <reason>`; when nothing is left, `Result complete: every job has its description`.
+The full picture (pages kept and why, the summary, how it ended) is on the web page's Acquire screen, read from the journal.
 
 ## Acceptance
 
 The build is acceptable when:
 
 1. `dotnet build` succeeds for the solution, and `dotnet ef migrations has-pending-model-changes` reports no changes.
-2. The first start with an empty data folder creates `input`, `input/archived` and `database/jobs.db` (all migrations applied).
+2. The API's first start with an empty data folder creates `input`, `input/archived` and `database/jobs.db` (all migrations applied).
 3. With the saved page "197 .net jobs in Valencia" in `input`, step 1 stores 100 unique jobs as `Pending` with title, company, location, a clean `/jobs/view/` URL, and the card's `ListedAt`; the page (and its `_files` folder) moves to `input/archived`.
 4. A signed-in search saved as a complete page gives its jobs (the saved example: 3 jobs with title, company, location and a `/jobs/view/<id>/` address; query "Senior .NET Software Engineer"; 3 results).
-5. A page without an address, a signed-in view-source save, a page without job links and a bot-check page stay in `input` with their reasons; the run exits with 1.
+5. A page without an address, a signed-in view-source save, a page without job links and a bot-check page stay in `input` with their reasons.
 6. Step 2 reads the jobs one at a time with the configured pause, stores each result at once, and sets `Read`, `Blocked`, `Failed` or `Gone`.
 7. One refusal opens the circuit: no request during the cooldown, then the same job is tried once; on success the run continues. `FailureThreshold` server errors in a row open it too; a 404 does not, and marks the job `Gone`.
 8. At the `StopAfterOpenings`-th opening the run stops; the next start (with an empty `input`) reads the jobs still `Pending`, then `Blocked`/`Failed`, and nothing else.
 9. Saving the same search page again creates a new listing but sends no requests: its jobs are already `Read`.
-10. A database made by an earlier version is upgraded at start-up and keeps its jobs.
-11. A bad setting exits with 2; a file that is not a database exits with 3.
+10. A database made by an earlier version is upgraded at the API's start-up and keeps its jobs and journal runs (`RemoveJournalStarter` keeps every other column of every run).
+11. A bad setting stops the API at start-up with exit code 2; a file that is not a database ends an acquisition `Failed` and shows in the red error pane.
 12. The web app lists every job, 25 per page, newest IDs first; clicking a row shows its details and description in a pane whose divider can be dragged; an unknown ID gives 404; it reads only through the API; without a database it shows the API's message, and without the API it says the API is not reachable.
 13. The API returns a `JobSummaryPage` for `GET api/JobCatalog?page=&pageSize=` and a `StoredJob` for `GET api/JobCatalog/{jobId}`; out-of-range values give 400, an unknown job 404. A missing database is created at the API's start-up.
-14. Every run of each step is recorded in the journal while it runs (console line `Journal: run N`): its state and entries can be followed from another process through `api/Journal` during the run; the state ends `Completed`, `Stopped` or `Failed`, or reads `Abandoned` 2 minutes after the last sign of life of a killed process.
-15. `POST api/JobFetcher` answers 202 and runs the acquisition in the background (jobs stored, pages archived, journal runs `startedBy: Api`); a second POST while it runs answers 409, and the console exits with 4; stopping the API during a cooldown ends the run `Stopped`; a bad setting stops the API at start-up with exit code 2.
-16. `POST api/JobFetcher/stop` stops the API's acquisition: during step 1 nothing is stored and the pages stay in `input`; during step 2 it stops after the current job, at once in a cooldown; the run ends `Stopped`. On the web page the Stop button shows only while a web-started acquisition runs; a console run shows an amber card instead. Failed and abandoned runs, and API errors, show the red error pane with the error's kind and message.
+14. Every run of each step is recorded in the journal while it runs (API log line `Journal: run N`): its state and entries can be followed from another process through `api/Journal` during the run; the state ends `Completed`, `Stopped` or `Failed`, or reads `Abandoned` 2 minutes after the last sign of life of a killed process.
+15. `POST api/JobFetcher` answers 202 and runs the acquisition in the background (jobs stored, pages archived, both steps' runs in the journal); a second POST while it runs answers 409; stopping the API during a cooldown ends the run `Stopped`; a bad setting stops the API at start-up with exit code 2.
+16. `POST api/JobFetcher/stop` stops the API's acquisition: during step 1 nothing is stored and the pages stay in `input`; during step 2 it stops after the current job, at once in a cooldown; the run ends `Stopped`. On the web page the Stop button shows only while an acquisition runs. Failed and abandoned runs, and API errors, show the red error pane with the error's kind and message.
 17. A journal that cannot be written (start or entries) never stops or slows a step: the step completes, a warning is logged, and a run's final state is still stored when only its entries fail.
 18. The code contains no cookie handling, proxy settings, quick retries, or browser automation.
 
 ## Not in this build
 
-Commands or arguments (the earlier prompt, single-job, search-by-link and `details` commands were removed), JSON-file storage, requesting search result pages (pagination, the `/jobs-guest/` endpoints), running or solving bot-check scripts, logins, cookies, browser automation, retries with a different identity, scheduled runs, a server database (PostgreSQL in Docker is a possible later step: the EF Core model would stay, with another provider and a new migration), applying to jobs, and storage of recruiter or contact details.
+A console app (removed 18 Oct 2026; the web page does everything it did), commands or arguments (the earlier prompt, single-job, search-by-link and `details` commands were removed), JSON-file storage, requesting search result pages (pagination, the `/jobs-guest/` endpoints), running or solving bot-check scripts, logins, cookies, browser automation, retries with a different identity, scheduled runs, a server database (PostgreSQL in Docker is a possible later step: the EF Core model would stay, with another provider and a new migration), applying to jobs, and storage of recruiter or contact details.

@@ -28,10 +28,6 @@
         {
             <partial name="_Banner" model="banner" />
         }
-        @if (v is not null && v.IsRunning && v.StartedFromConsole)
-        {
-            <partial name="_Banner" model="@(new PageBanner("busy", "An acquisition started from the console is running.", "It can only be stopped there, with Ctrl+C. Wait until it finishes; a second run would double the requests to LinkedIn."))" />
-        }
 
         @if (Model.ShowProgress)
         {
@@ -83,12 +79,12 @@
                     }
                     else if (v.IsRunning)
                     {
-                        <span class="status Running">Running</span><span>since @v.When(v.StartedAt), started from @v.StartedBy</span>
+                        <span class="status Running">Running</span><span>since @v.When(v.StartedAt)</span>
                     }
                     else
                     {
                         <span class="status @v.StateText">@v.StateText</span>
-                        <span>@v.When(v.Details?.FinishedAt ?? v.Listing.FinishedAt ?? v.Listing.LastSeenAt), started from @v.StartedBy</span>
+                        <span>@v.When(v.Details?.FinishedAt ?? v.Listing.FinishedAt ?? v.Listing.LastSeenAt)</span>
                         @if (!Model.ShowProgress)
                         {
                             <span> · @Short(v.Details?.Message ?? v.Listing.Message) · <a class="link" asp-page="/Index">see the jobs</a></span>

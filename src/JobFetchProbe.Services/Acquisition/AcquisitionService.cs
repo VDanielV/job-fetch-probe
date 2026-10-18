@@ -1,7 +1,6 @@
 using JobFetchProbe.Models.Acquisition;
 using JobFetchProbe.Models.FetchJobDetails;
 using JobFetchProbe.Models.FetchJobListing;
-using JobFetchProbe.Models.Journal;
 using JobFetchProbe.Services.FetchJobDetails;
 using JobFetchProbe.Services.FetchJobListing;
 using JobFetchProbe.Services.Journal;
@@ -20,9 +19,9 @@ public sealed class AcquisitionService(IServiceScopeFactory scopes, IJournalServ
         return journal.IsAnyRunActiveAsync(ct);
     }
 
-    public async Task<AcquisitionResult> RunAsync(JournalStarter startedBy, IAcquisitionObserver observer, CancellationToken ct = default)
+    public async Task<AcquisitionResult> RunAsync(IAcquisitionObserver observer, CancellationToken ct = default)
     {
-        var jobListing = await FetchJobListingAsync(startedBy, observer, ct);
+        var jobListing = await FetchJobListingAsync(observer, ct);
         var jobListingComplete = !jobListing.Stopped && jobListing.Files.All(f => f.Success && f.ArchivedTo is not null);
 
         // Stopped during step 1 (or right after it): step 2 does not start.
@@ -31,14 +30,14 @@ public sealed class AcquisitionService(IServiceScopeFactory scopes, IJournalServ
             return new AcquisitionResult(jobListing, null, jobListingComplete, false);
         }
 
-        var jobDetails = await FetchJobDetailsAsync(startedBy, observer, ct);
+        var jobDetails = await FetchJobDetailsAsync(observer, ct);
         return new AcquisitionResult(jobListing, jobDetails, jobListingComplete, jobListingComplete && jobDetails.StillUnread == 0);
     }
 
-    private async Task<JobListingFetchResult> FetchJobListingAsync(JournalStarter startedBy, IAcquisitionObserver observer, CancellationToken ct)
+    private async Task<JobListingFetchResult> FetchJobListingAsync(IAcquisitionObserver observer, CancellationToken ct)
     {
         observer.JobListingStarting();
-        await using var journalRun = await journal.StartJobListingRunAsync(startedBy, ct);
+        await using var journalRun = await journal.StartJobListingRunAsync(ct);
         observer.JournalRunStarted(journalRun.RunId);
 
         var progress = new CallbackProgress<JobListingFetchProgress>(p =>
@@ -65,10 +64,10 @@ public sealed class AcquisitionService(IServiceScopeFactory scopes, IJournalServ
         return result;
     }
 
-    private async Task<JobDetailsFetchResult> FetchJobDetailsAsync(JournalStarter startedBy, IAcquisitionObserver observer, CancellationToken ct)
+    private async Task<JobDetailsFetchResult> FetchJobDetailsAsync(IAcquisitionObserver observer, CancellationToken ct)
     {
         observer.JobDetailsStarting();
-        await using var journalRun = await journal.StartJobDetailsRunAsync(startedBy, ct);
+        await using var journalRun = await journal.StartJobDetailsRunAsync(ct);
         observer.JournalRunStarted(journalRun.RunId);
 
         var progress = new CallbackProgress<JobDetailsFetchEvent>(e =>

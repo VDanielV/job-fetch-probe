@@ -28,7 +28,7 @@ The first proposal, recorded as given. Topics A and B (section 2) refined it.
 
 1. Progress in the web: POST only first; a status endpoint (`GET api/JobFetcher`) and a live status on the Acquire page as the next step.
 2. Console and API running at the same time would double the requests: a lock file `<DataRoot>\acquisition.lock`, held during a run; a second run is refused.
-3. The console app stays as a second entry point, sharing the same service; it can be retired later.
+3. The console app stays as a second entry point, sharing the same service; it can be retired later. **Retired 18 Oct 2026**: the project was removed, and with it who-started-it in the journal (`JournalStarter`, the `StartedBy` columns; migration `RemoveJournalStarter`).
 
 **Checks proposed:** console flow test unchanged; API 202 / 409, jobs and descriptions stored, pages archived, circuit breaker still opens, database created when missing, lock file refuses a parallel run; web button states; docs.
 
@@ -67,7 +67,7 @@ Small related bug seen in the log: the "time left" estimate is unreliable when t
 
 - **Journal retention (review later).** Each step keeps its last 50 runs, pruned when a new run starts (TODO in `Services/Journal/JournalService.cs`). Every run adds entries, and a process that fails over and over keeps adding runs, so the database could grow out of control: decide on a limit by age or size, and maybe a cleanup that does not depend on a run starting.
 
-- `DataPaths` holds input folders as well as the database path; rename (for example `InputPaths`) or split. The owner's TODO comments are in `DataPaths.cs` and the console's `Program.cs`.
+- `DataPaths` holds input folders as well as the database path; rename (for example `InputPaths`) or split. The owner's TODO comment is in `DataPaths.cs`.
 - Delete the hidden `.dev.md5` left in `job-fetch-probe-data` by mistake.
 - The web Overview could show summary cards (totals per status) and search or filters, as in the reference design; both need new data from the API (counts per status, filtering), so a change across Api, Services and Data.
 - The web app could wait for the API before opening the browser, or retry once, if starting both together often shows "API not reachable".
@@ -84,7 +84,7 @@ What is already idempotent (repeating it changes nothing, or nothing harmful):
 
 - **Step 2, per job.** A result is stored as soon as it is known; a job already read is never requested again; a gone job (404/410) is never tried again.
 - **Jobs in step 1.** Jobs are upserted by job ID, so a page read twice adds no duplicate job.
-- **Two starts at the same time.** While a run is going, a second `POST api/JobFetcher` gets `409`, and the console exits with 4.
+- **Two starts at the same time.** While a run is going, a second `POST api/JobFetcher` gets `409`.
 
 What is not:
 
@@ -92,13 +92,13 @@ What is not:
 2. **A retry right after a refusal asks the site again at once.** If a run stopped because the circuit breaker gave up (429s), a new `POST`, whether a retry or not, starts step 2 straight away with a fresh breaker. That breaks the "no quick retries" rule across runs (see section 3, item 1).
 3. **The response does not identify the acquisition.** It has no id and no run ids, only `Location: /api/Journal/runs`, so a client cannot follow *its* run or check on it instead of posting again.
 4. **Step 1 can store a page twice.** The listing is stored first and the pages archived after. If archiving fails (file locked) or the process dies in between, the page stays in `input`, and the next run stores it again as a new listing. The jobs are not duplicated, but the listing and its sources are.
-5. **A small race between the API and the console.** The check reads the journal and then starts, so two starts within the same second or two can both go ahead.
+5. **A small race between two API instances.** The check reads the journal and then starts, so two starts within the same second or two can both go ahead.
 
 Proposed plan (each part independent; plan first when picked up):
 
-- **A. An acquisition record, with an optional `Idempotency-Key`.** New table `Acquisitions` (Id, StartedBy, RequestedAt, IdempotencyKey, State, the two journal run ids, FinishedAt) and one migration. Starting inserts a row in one transaction. A partial unique index allows only one row whose state is Running, which closes the race in item 5 at the database level, for the API and the console alike. A `POST` with an `Idempotency-Key` header already seen within 24 hours returns the **same answer** (202 with the same acquisition), whatever happened since, without starting anything. Without the header, it behaves as today.
+- **A. An acquisition record, with an optional `Idempotency-Key`.** New table `Acquisitions` (Id, RequestedAt, IdempotencyKey, State, the two journal run ids, FinishedAt) and one migration. Starting inserts a row in one transaction. A partial unique index allows only one row whose state is Running, which closes the race in item 5 at the database level, for every API instance. A `POST` with an `Idempotency-Key` header already seen within 24 hours returns the **same answer** (202 with the same acquisition), whatever happened since, without starting anything. Without the header, it behaves as today.
 - **B. Identify and follow the acquisition.** The 202 body carries `acquisitionId` and the journal run ids as they become known. `Location: /api/JobFetcher/{id}`, plus a new `GET api/JobFetcher/{id}` (state, steps, run ids, result). This is the status the web button needs.
-- **C. A quiet period after a refusal.** Before starting step 2, look at the last refusal (jobs `Blocked`, `LastAttemptAt`, already stored; this is section 3, item 1). Inside the cooldown, the API answers `429 Too Many Requests` with `Retry-After`, the console says when to try again, and nothing is sent to the site.
+- **C. A quiet period after a refusal.** Before starting step 2, look at the last refusal (jobs `Blocked`, `LastAttemptAt`, already stored; this is section 3, item 1). Inside the cooldown, the API answers `429 Too Many Requests` with `Retry-After`, the web page says when to try again, and nothing is sent to the site.
 - **D. Step 1: do not store the same page twice.** Store a SHA-256 of each page with its listing source (one column and a migration). A page whose hash is already stored is only archived, with the message "already stored in listing …".
 
 Suggested order: C (protects the site, small), then A + B together (the API contract and the web button), then D.
@@ -107,12 +107,12 @@ Suggested order: C (protects the site, small), then A + B together (the API cont
 
 Seen when running an acquisition from the web page (to tackle later; plan first).
 
-**A. The API's log is not like the console's output.** `LoggingAcquisitionObserver` writes through the default ASP.NET Core console logger, so every event takes two lines (`info: JobFetchProbe.Services.Acquisition.LoggingAcquisitionObserver[0]` and then the text), without the time of day. Some of what the console prints is missing:
+**A. The API's log is not like the old console's output.** Since the console app was removed (18 Oct 2026), this log is the only text record of a run besides the journal. `LoggingAcquisitionObserver` writes through the default ASP.NET Core console logger, so every event takes two lines (`info: JobFetchProbe.Services.Acquisition.LoggingAcquisitionObserver[0]` and then the text), without the time of day. Some of what the console printed is missing:
 - step 2's plan (jobs to read, one request every N s, the estimate, the circuit breaker settings)
 - the "no requests for X, then one trial request; if refused too, the run stops" explanation
 - the final summary (input pages, job links, descriptions, requests and time, still to read, database)
 
-Possible fix: one line per event with the time (the console logger's single-line format with a timestamp, for this category or the whole API), the same wording as the console (shared texts instead of two separate copies), and the summary at the end.
+Possible fix: one line per event with the time (the console logger's single-line format with a timestamp, for this category or the whole API), the console's former wording, and the summary at the end.
 
 **B. The 15-second refresh does not fit a cooldown.** While the circuit is open, nothing happens until the trial request, which can be minutes away. The page reloads every 15 s anyway, while step 2 only reports the time left every 30 s. Each reload asks the API for the whole run again (all entries), only to show the same thing with a new countdown.
 

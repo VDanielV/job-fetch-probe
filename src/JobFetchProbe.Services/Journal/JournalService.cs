@@ -16,12 +16,11 @@ public sealed class JournalService(
 {
     public const int MaxTake = 50;
 
-    public async Task<IJobListingRunRecorder> StartJobListingRunAsync(JournalStarter startedBy, CancellationToken ct = default)
+    public async Task<IJobListingRunRecorder> StartJobListingRunAsync(CancellationToken ct = default)
     {
         var now = time.GetLocalNow();
         var run = new JobListingJournalRun
         {
-            StartedBy = startedBy,
             StartedAt = now,
             LastSeenAt = now,
             State = JournalRunState.Running,
@@ -40,12 +39,11 @@ public sealed class JournalService(
         }
     }
 
-    public async Task<IJobDetailsRunRecorder> StartJobDetailsRunAsync(JournalStarter startedBy, CancellationToken ct = default)
+    public async Task<IJobDetailsRunRecorder> StartJobDetailsRunAsync(CancellationToken ct = default)
     {
         var now = time.GetLocalNow();
         var run = new JobDetailsJournalRun
         {
-            StartedBy = startedBy,
             StartedAt = now,
             LastSeenAt = now,
             State = JournalRunState.Running,

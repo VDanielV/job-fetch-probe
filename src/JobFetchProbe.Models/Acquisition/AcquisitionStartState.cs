@@ -6,6 +6,6 @@ public enum AcquisitionStartState
     /// <summary>The acquisition started and runs in the background.</summary>
     Started,
 
-    /// <summary>Not started: an acquisition is already running (in this process, or in another one such as the console app).</summary>
+    /// <summary>Not started: an acquisition is already running (in this process, or in another one).</summary>
     AlreadyRunning,
 }

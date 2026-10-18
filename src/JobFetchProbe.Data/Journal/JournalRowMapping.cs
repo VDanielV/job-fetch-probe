@@ -9,7 +9,6 @@ internal static class JournalRowMapping
 {
     public static void CopyTo(this JobListingJournalRun run, JobListingJournalRunRow row)
     {
-        row.StartedBy = run.StartedBy.ToString();
         row.StartedAt = run.StartedAt;
         row.LastSeenAt = run.LastSeenAt;
         row.FinishedAt = run.FinishedAt;
@@ -26,7 +25,6 @@ internal static class JournalRowMapping
 
     public static void CopyTo(this JobDetailsJournalRun run, JobDetailsJournalRunRow row)
     {
-        row.StartedBy = run.StartedBy.ToString();
         row.StartedAt = run.StartedAt;
         row.LastSeenAt = run.LastSeenAt;
         row.FinishedAt = run.FinishedAt;
@@ -78,7 +76,6 @@ internal static class JournalRowMapping
     public static JobListingJournalRun ToModel(this JobListingJournalRunRow row, IReadOnlyList<JobListingJournalEntryRow> entries) => new()
     {
         RunId = row.Id,
-        StartedBy = Parse<JournalStarter>(row.StartedBy),
         StartedAt = row.StartedAt,
         LastSeenAt = row.LastSeenAt,
         FinishedAt = row.FinishedAt,
@@ -99,7 +96,6 @@ internal static class JournalRowMapping
     public static JobDetailsJournalRun ToModel(this JobDetailsJournalRunRow row, IReadOnlyList<JobDetailsJournalEntryRow> entries) => new()
     {
         RunId = row.Id,
-        StartedBy = Parse<JournalStarter>(row.StartedBy),
         StartedAt = row.StartedAt,
         LastSeenAt = row.LastSeenAt,
         FinishedAt = row.FinishedAt,

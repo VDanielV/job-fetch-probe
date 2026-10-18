@@ -2,7 +2,6 @@ using JobFetchProbe.Data.Journal.Repositories;
 using JobFetchProbe.Data.Repositories;
 using JobFetchProbe.Services.Abstractions;
 using JobFetchProbe.Services.Abstractions.Journal;
-using JobFetchProbe.Services.Catalog;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -14,7 +13,7 @@ namespace JobFetchProbe.Data;
 public static class DependencyInjection
 {
     /// <summary>
-    /// For the apps that fetch (the console app, and the API since it starts acquisitions): the database, opened
+    /// For the API since it starts acquisitions: the database, opened
     /// read-write (and created when missing, see <see cref="DatabaseInitializer.InitializeDatabaseAsync"/>), the
     /// repositories the flow writes through, the read-only view of the jobs, and the journal.
     /// </summary>

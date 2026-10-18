@@ -9,9 +9,9 @@
 
 ## Architecture rules
 
-- **Layers:** Web → Api → Services → Data, for the data the apps read. Each layer uses only the one below it.
+- **Layers:** Web → Api → Services → (Data | Infrastructure). Each layer uses only the one below it.
   - Controllers use Services types only (for example `IJobRetriever`, `IAcquisitionRunner`). Data and Infrastructure are referred to only in the API's `Program.cs`, which wires them into dependency injection.
-  - The console app: Console → Services → (Data | Infrastructure). The order of the steps lives in Services (`IAcquisitionService`); the console classes only print. Infrastructure (HTTP, saved pages, input folder) and Data (SQLite) implement the Services interfaces and are referred to only in the console's `Program.cs`.
+  - The order of the steps lives in Services (`IAcquisitionService`). Infrastructure (HTTP, saved pages, input folder) and Data (SQLite) implement the Services interfaces.
 - **Models** (`JobFetchProbe.Models`) holds DTOs only: no interfaces, no logic, no database rows.
 - **Interfaces** that Services needs from the outside world live in `Services/Abstractions`; Infrastructure and Data implement them. Interfaces are never moved to Models.
 - **Data** (`JobFetchProbe.Data`) owns the database: `JobsDbContext`, entities (`Entities/`, suffix `Row`, never `Entity`), one configuration class per table, migrations and repositories. Entities never leave the Data project; repositories return models.

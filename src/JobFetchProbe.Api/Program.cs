@@ -18,7 +18,7 @@ using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Same Paths:DataRoot setting as the console app, so all apps use the same database file and input folder.
+// Same Paths:DataRoot setting all apps use the same database file and input folder.
 var dataRoot = DataPaths.AddDataRootDefaults(builder.Configuration);
 
 // Enums (journal states, steps…) as their names, not numbers.
@@ -47,7 +47,7 @@ builder.Logging.AddFilter("Microsoft.Extensions.Hosting.Internal.Host", LogLevel
 
 var app = builder.Build();
 
-// Like the console app: the input folders exist, and the database is created or updated before the first request.
+// The input folders exist, and the database is created or updated before the first request.
 if (dataRoot is not null)
 {
     DataPaths.CreateFolders(dataRoot);

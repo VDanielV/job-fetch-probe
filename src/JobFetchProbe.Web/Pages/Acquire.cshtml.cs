@@ -56,7 +56,7 @@ public sealed class AcquireModel(IJobFetcherClient fetcher, IJournalClient journ
     {
         get
         {
-            return View is not null && View.IsRunning && !View.IsStarting && !View.StartedFromConsole;
+            return View is not null && View.IsRunning && !View.IsStarting;
         }
     }
 

@@ -4,7 +4,6 @@ namespace JobFetchProbe.Data.Journal.Entities;
 public sealed class JobDetailsJournalRunRow
 {
     public long Id { get; set; }
-    public string StartedBy { get; set; } = string.Empty;
     public DateTimeOffset StartedAt { get; set; }
     public DateTimeOffset LastSeenAt { get; set; }
     public DateTimeOffset? FinishedAt { get; set; }

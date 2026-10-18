@@ -34,7 +34,7 @@ public sealed record PageError(string Title, string Explanation, string Message,
     public static PageError Abandoned(string? message)
     {
         return new PageError("The process ended without finishing",
-            "The API (or the console app) was closed, killed or crashed during the acquisition. What was read before is kept.",
+            "The API was closed, killed or crashed during the acquisition. What was read before is kept.",
             message ?? "No sign of life for 2 minutes.", null);
     }
 

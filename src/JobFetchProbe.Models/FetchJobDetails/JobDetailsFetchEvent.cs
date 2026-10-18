@@ -3,7 +3,7 @@ using JobFetchProbe.Models.Search;
 
 namespace JobFetchProbe.Models.FetchJobDetails;
 
-/// <summary>Reported while step 2 runs, so the console can show what is happening.</summary>
+/// <summary>Reported while step 2 runs, so that it can show what is happening.</summary>
 public sealed record JobDetailsFetchEvent(JobDetailsFetchEventKind Kind, DateTimeOffset At)
 {
     /// <summary>Position (1-based) of the job just tried in this run's list.</summary>

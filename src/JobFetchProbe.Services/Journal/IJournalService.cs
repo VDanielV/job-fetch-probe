@@ -11,10 +11,10 @@ namespace JobFetchProbe.Services.Journal;
 public interface IJournalService
 {
     /// <summary>Starts recording a step 1 run. Never throws: if the journal cannot be written, the recorder records nothing.</summary>
-    Task<IJobListingRunRecorder> StartJobListingRunAsync(JournalStarter startedBy, CancellationToken ct = default);
+    Task<IJobListingRunRecorder> StartJobListingRunAsync(CancellationToken ct = default);
 
     /// <summary>Starts recording a step 2 run. Never throws: if the journal cannot be written, the recorder records nothing.</summary>
-    Task<IJobDetailsRunRecorder> StartJobDetailsRunAsync(JournalStarter startedBy, CancellationToken ct = default);
+    Task<IJobDetailsRunRecorder> StartJobDetailsRunAsync(CancellationToken ct = default);
 
     /// <summary>
     /// True when a run of either step is still Running and showed a sign of life in the last

@@ -181,7 +181,7 @@ public sealed class JobDetailsFetcher(
 
     /// <summary>
     /// Stores the outcome before anything else, so it is kept whatever happens next. Saving is not cancelled:
-    /// Ctrl+C stops after the current job, never in the middle of a write.
+    /// A stop (the Stop button, or the API stopping) takes effect after the current job, never in the middle of a write.
     /// </summary>
     private async Task StoreAsync(JobDetailsFetchState run, JobListing job, JobResult result)
     {

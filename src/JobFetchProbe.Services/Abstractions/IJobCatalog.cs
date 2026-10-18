@@ -5,7 +5,7 @@ namespace JobFetchProbe.Services.Abstractions;
 /// <summary>Read-only view of the stored jobs, for the web app and <c>JobRetriever</c>. Implemented by the data layer.</summary>
 public interface IJobCatalog
 {
-    /// <summary>False while the database does not exist yet (the console app creates it on its first run).</summary>
+    /// <summary>False while the database does not exist yet (the API creates it when it starts).</summary>
     bool IsAvailable { get; }
 
     /// <summary>One page of jobs, newest job IDs first.</summary>

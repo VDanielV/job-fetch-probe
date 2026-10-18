@@ -9,7 +9,7 @@ namespace JobFetchProbe.Data.Repositories;
 /// <summary>Reads the Jobs table for the web app and the API. Never writes: each call opens a short-lived, no-tracking context.</summary>
 public sealed class SqliteJobCatalog(IDbContextFactory<JobsDbContext> contexts, IOptions<DatabaseSettings> database) : IJobCatalog
 {
-    /// <summary>The connection is read-only and never creates the file, so the database exists only once the console app ran.</summary>
+    /// <summary>The connection is read-only and never creates the file, so the database exists only once the app ran.</summary>
     public bool IsAvailable => File.Exists(database.Value.FullPath);
 
     public async Task<JobSummaryPage> GetPageAsync(int page, int pageSize, CancellationToken ct = default)

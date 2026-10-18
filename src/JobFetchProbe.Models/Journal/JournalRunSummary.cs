@@ -5,7 +5,6 @@ namespace JobFetchProbe.Models.Journal;
 public sealed record JournalRunSummary(
     JournalStep Step,
     long RunId,
-    JournalStarter StartedBy,
     DateTimeOffset StartedAt,
     DateTimeOffset LastSeenAt,
     DateTimeOffset? FinishedAt,

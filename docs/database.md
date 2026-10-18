@@ -1,6 +1,6 @@
 # Database design
 
-`jobs.db` (SQLite), created and migrated by the console app or the API (at start-up) through EF Core. The tables are defined in `src/JobFetchProbe.Data` (`Entities/` and `Configurations/` for jobs and listings, `Journal/Entities/` and `Journal/Configurations/` for the journal; one class each per table). This page describes the model after the migration `AddJournalSummary`.
+`jobs.db` (SQLite), created and migrated by the API at start-up through EF Core. The tables are defined in `src/JobFetchProbe.Data` (`Entities/` and `Configurations/` for jobs and listings, `Journal/Entities/` and `Journal/Configurations/` for the journal; one class each per table). This page describes the model after the migration `RemoveJournalStarter`.
 
 ![Tables of jobs.db and how they relate](database.svg)
 
@@ -16,6 +16,7 @@
   - `JobDetailsJournalRuns` / `JobDetailsJournalEntries`: step 2 (FetchJobDetails) runs, and per job and per circuit breaker change what happened.
 
   Migration `AddJournalSummary` (18 Oct 2026) adds what the web page's summary and error pane need: `StillUnread` and `TotalRead` on step 2 runs (set when the run ends), and `ErrorType` on both (the type of the error when a run fails, for example `Microsoft.Data.Sqlite.SqliteException`; its text is in `Message`).
+  Migration `RemoveJournalStarter` (18 Oct 2026) drops `StartedBy` from both run tables: since the console app was removed, every run is started by the API. Every other column of the existing rows is kept as it was.
   The *run* row is where the run stands now (state, counters, circuit breaker, last sign of life); the *entries* are what happened, in order. A reader asks for a run with the entries after the last id it has, and stops when the state is no longer `Running`. The journal is not linked to the other tables by keys (`ListingId` is informational), so it can be pruned freely.
 
 ## Relationships
@@ -35,7 +36,7 @@
 - **`Jobs.Status`** is stored as text: `Pending` (never tried), `Read`, `Blocked`, `Failed` (tried again on the next run) or `Gone` (404/410, not tried again).
 - **`Position`** keeps the order of pages, cards and details as they appeared.
 - **Indexes** speed up the queries the app runs: jobs by status (step 2's work list), by company, and children by parent.
-- **Journal states** (`State`): `Running`, `Completed`, `Stopped` (circuit breaker gave up, or Ctrl+C), `Failed` (an error, in `Message`), `Abandoned` (no sign of life for 2 minutes: the process ended without saying so). A running process refreshes `LastSeenAt` at least every 30 seconds. `CircuitOpenUntil` is written once when the circuit opens; readers compute the countdown from it.
+- **Journal states** (`State`): `Running`, `Completed`, `Stopped` (circuit breaker gave up, or Stop), `Failed` (an error, in `Message`), `Abandoned` (no sign of life for 2 minutes: the process ended without saying so). A running process refreshes `LastSeenAt` at least every 30 seconds. `CircuitOpenUntil` is written once when the circuit opens; readers compute the countdown from it.
 - **Journal size:** each step keeps its last 50 runs; older runs and their entries are deleted when a new run starts. To be reviewed (a TODO in `JournalService` and an item in `backlog.md`): a process that fails over and over keeps adding runs.
 - EF Core also keeps its own table, `__EFMigrationsHistory`, with the migrations already applied. It is not part of the design and is not shown.
 
@@ -102,7 +103,6 @@ erDiagram
     }
     JobListingJournalRuns {
         INTEGER Id PK
-        TEXT StartedBy "Console, Api"
         TEXT StartedAt
         TEXT LastSeenAt "sign of life"
         TEXT FinishedAt "nullable"
@@ -130,7 +130,6 @@ erDiagram
     }
     JobDetailsJournalRuns {
         INTEGER Id PK
-        TEXT StartedBy "Console, Api"
         TEXT StartedAt
         TEXT LastSeenAt "sign of life"
         TEXT FinishedAt "nullable"

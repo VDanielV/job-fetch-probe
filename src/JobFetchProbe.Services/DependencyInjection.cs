@@ -30,7 +30,7 @@ public static class DependencyInjection
             .Validate(s => s.CircuitBreaker.CooldownSeconds is >= 1 and <= 14400, "FetchJobDetails:CircuitBreaker:CooldownSeconds must be 1-14400")
             .Validate(s => s.CircuitBreaker.MaxCooldownSeconds is >= 1 and <= 86400, "FetchJobDetails:CircuitBreaker:MaxCooldownSeconds must be 1-86400")
             .Validate(s => s.CircuitBreaker.StopAfterOpenings is >= 1 and <= 10, "FetchJobDetails:CircuitBreaker:StopAfterOpenings must be 1-10")
-            .ValidateOnStart(); // a hosted app (the API) refuses to start with a bad value; the console finds it on first use
+            .ValidateOnStart(); // the API refuses to start with a bad value
 
 
         services.AddSingleton<IJobPageParser, JobPageParser>();

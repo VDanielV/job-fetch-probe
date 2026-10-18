@@ -1,5 +1,4 @@
 using JobFetchProbe.Models.Acquisition;
-using JobFetchProbe.Models.Journal;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -7,7 +6,7 @@ namespace JobFetchProbe.Services.Acquisition;
 
 /// <summary>
 /// Runs one acquisition at a time on a background task. As a hosted service it is told when the application stops:
-/// the acquisition is then cancelled (step 2 stops after the current job, like Ctrl+C on the console) and awaited, so
+/// the acquisition is then cancelled (step 2 stops after the current job) and awaited, so
 /// nothing is left half-written.
 /// </summary>
 public sealed class AcquisitionRunner(
@@ -21,7 +20,7 @@ public sealed class AcquisitionRunner(
     private Task? current;
     private CancellationTokenSource? currentStop;
 
-    public async Task<AcquisitionStart> TryStartAsync(JournalStarter startedBy, CancellationToken ct = default)
+    public async Task<AcquisitionStart> TryStartAsync(CancellationToken ct = default)
     {
         // One check-and-start at a time, so two requests arriving together cannot both start a run.
         await gate.WaitAsync(ct);
@@ -39,7 +38,7 @@ public sealed class AcquisitionRunner(
             {
                 return Answer(
                     AcquisitionStartState.AlreadyRunning,
-                    "An acquisition is already running (started by the console app, or another API). Follow it in the journal. " +
+                    "An acquisition is already running (in another instance of the API). Follow it in the journal. " +
                     "A run that ended without finishing counts as running until it has shown no sign of life for 2 minutes.");
             }
 
@@ -47,7 +46,7 @@ public sealed class AcquisitionRunner(
             currentStop?.Dispose();
             currentStop = CancellationTokenSource.CreateLinkedTokenSource(stopping.Token);
             var token = currentStop.Token;
-            current = Task.Run(() => RunAsync(startedBy, token));
+            current = Task.Run(() => RunAsync(token));
             return Answer(AcquisitionStartState.Started, "Acquisition started: step 1, then step 2. Follow it in the journal.");
         }
         finally
@@ -63,13 +62,6 @@ public sealed class AcquisitionRunner(
         {
             if (current is not { IsCompleted: false } || currentStop is null)
             {
-                if (await acquisition.IsRunningAsync(ct))
-                {
-                    return new AcquisitionStop(
-                        AcquisitionStopState.NotRunning,
-                        time.GetLocalNow(),
-                        "The running acquisition was started by the console app; stop it there with Ctrl+C.");
-                }
                 return new AcquisitionStop(AcquisitionStopState.NotRunning, time.GetLocalNow(), "No acquisition is running.");
             }
 
@@ -112,12 +104,12 @@ public sealed class AcquisitionRunner(
         gate.Dispose();
     }
 
-    private async Task RunAsync(JournalStarter startedBy, CancellationToken token)
+    private async Task RunAsync(CancellationToken token)
     {
         var observer = new LoggingAcquisitionObserver(loggers.CreateLogger<LoggingAcquisitionObserver>());
         try
         {
-            var result = await acquisition.RunAsync(startedBy, observer, token);
+            var result = await acquisition.RunAsync(observer, token);
             if (result.JobDetails is null)
             {
                 logger.LogInformation("Acquisition stopped during step 1: nothing stored, the pages stay in the input folder.");
