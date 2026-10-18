@@ -9,7 +9,7 @@ How to read them: time runs downwards; a solid arrow is a call, a dashed arrow i
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Client as Client (.http file, web button later)
+    actor Client as Client (Acquire page, .http file)
     participant Ctl as JobFetcherController
     participant Run as AcquisitionRunner
     participant Acq as AcquisitionService
@@ -112,7 +112,7 @@ The console app follows the same path from `AcquisitionService` on: `PipelineCon
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Reader as Reader (.http file, web page later)
+    actor Reader as Reader (Acquire page every 15 s, .http file)
     participant JCtl as JournalController
     participant Jnl as JournalService
     participant Db as SqliteJournalRepository

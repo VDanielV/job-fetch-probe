@@ -57,13 +57,13 @@ public sealed class AcquisitionRunner(
     }
 
     /// <summary>The application is stopping: cancels the acquisition and waits for it (or for the host's shutdown timeout).</summary>
-    public async Task StopAsync(CancellationToken cancellationToken)
+    public async Task StopAsync(CancellationToken ct)
     {
         await stopping.CancelAsync();
         if (current is { IsCompleted: false } running)
         {
             logger.LogWarning("The application is stopping: the acquisition stops after the current job.");
-            await running.WaitAsync(cancellationToken);
+            await running.WaitAsync(ct);
         }
     }
 

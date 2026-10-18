@@ -9,6 +9,7 @@
     <title>@ViewData["Title"] · Job Fetch Probe</title>
     <link rel="icon" type="image/png" href="~/img/favicon.png">
     <link rel="stylesheet" href="~/css/site.css">
+    @await RenderSectionAsync("Head", required: false)
 </head>
 <body>
     <aside class="sidebar">

@@ -5,11 +5,11 @@ Each item follows the working agreement in `CLAUDE.md`: a plan first, changes on
 
 Updated: 16 Oct 2026 (night).
 
-## 1. Move acquisition from the console app to the API (proposed 16 Oct 2026) — **done 16 Oct 2026, except the web button**
+## 1. Move acquisition from the console app to the API (proposed 16 Oct 2026) — **done 18 Oct 2026**
 
 The first proposal, recorded as given. Topics A and B (section 2) refined it.
 
-**Done 16 Oct 2026:** `POST api/JobFetcher` (`JobFetcherController` → `IAcquisitionRunner`, a hosted service in Services/Acquisition) answers 202 and runs `IAcquisitionService` in the background, with progress in the journal (`startedBy: Api`) and the API log; 409 while one runs. One-at-a-time uses the journal instead of a lock file (decision 2 below): the API and the console (exit code 4) refuse while either runs. The API opens the database read-write (`AddJobStore`, which now also registers `IJobCatalog`), creates or migrates it at start-up, and has its own `FetchJobDetails` and `HttpClient` settings. Stopping the API stops the run after the current job. **Still open:** the web button (`IJobFetcherClient`, Acquire page) and a status on the page; a lock file, only if the small gap of two starts in the same second matters.
+**Done 16 Oct 2026:** `POST api/JobFetcher` (`JobFetcherController` → `IAcquisitionRunner`, a hosted service in Services/Acquisition) answers 202 and runs `IAcquisitionService` in the background, with progress in the journal (`startedBy: Api`) and the API log; 409 while one runs. One-at-a-time uses the journal instead of a lock file (decision 2 below): the API and the console (exit code 4) refuse while either runs. The API opens the database read-write (`AddJobStore`, which now also registers `IJobCatalog`), creates or migrates it at start-up, and has its own `FetchJobDetails` and `HttpClient` settings. Stopping the API stops the run after the current job. **Done 18 Oct 2026:** the web button. The Acquire page starts an acquisition (`IJobFetcherClient`) and follows it in a progress pane read from the journal (`IJournalClient`), reloaded every 15 s while it runs. **Still open:** a lock file, only if the small gap of two starts in the same second matters (see section 5, part A).
 
 **Problem.** The console app mixes four things: the work (`InboxService`, `DetailsService`), running the flow (step 1 → step 2 → totals, in `PipelineConsole`), reporting progress (printing in `InboxConsole`, `DetailsConsole`, `ConsoleLog`) and lifetime (start, Ctrl+C, exit codes). The API cannot reuse the flow, cannot print, and an HTTP request cannot wait for a run that takes minutes or hours (pauses, circuit breaker cooldowns).
 

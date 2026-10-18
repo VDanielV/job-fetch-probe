@@ -48,7 +48,7 @@ public sealed class IndexModel(IJobCatalogClient api) : PageModel
                 }
             }
         }
-        catch (JobCatalogUnavailableException ex)
+        catch (ApiUnavailableException ex)
         {
             Unavailable = ex.Message;
         }

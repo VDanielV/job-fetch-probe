@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
-  <!-- Read-only web page over the API: a paged table of jobs and a detail page per job. Only Models (the DTOs the API returns). -->
+  <!-- Web page over the API: a paged table of jobs with a details pane, and the Acquire page that starts an acquisition and shows its progress. Only Models (the DTOs the API returns). -->
   <ItemGroup>
     <ProjectReference Include="..\JobFetchProbe.Models\JobFetchProbe.Models.csproj" />
   </ItemGroup>

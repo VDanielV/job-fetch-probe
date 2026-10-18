@@ -34,17 +34,9 @@ public sealed class JobCatalogClient(HttpClient http) : IJobCatalogClient
     }
 
     /// <summary>Sends the GET; a connection failure or a timeout means the API is not reachable.</summary>
-    private async Task<HttpResponseMessage> SendAsync(string path, CancellationToken ct)
+    private Task<HttpResponseMessage> SendAsync(string path, CancellationToken ct)
     {
-        try
-        {
-            return await http.GetAsync(path, ct);
-        }
-        catch (Exception ex) when (ex is HttpRequestException || (ex is TaskCanceledException && !ct.IsCancellationRequested))
-        {
-            throw new JobCatalogUnavailableException(
-                $"The API is not reachable at {http.BaseAddress}. Start JobFetchProbe.Api (or check JobCatalogApi:BaseUrl).", ex);
-        }
+        return ApiCall.SendAsync(http, () => http.GetAsync(path, ct), ct);
     }
 
     /// <summary>503 from the API: no database yet. Its problem details say why; that text is shown as is.</summary>
@@ -63,6 +55,6 @@ public sealed class JobCatalogClient(HttpClient http) : IJobCatalogClient
         {
             // Not problem details: fall back to the generic text below.
         }
-        throw new JobCatalogUnavailableException(problem?.Detail ?? "The API cannot read the jobs database right now.");
+        throw new ApiUnavailableException(problem?.Detail ?? "The API cannot read the jobs database right now.");
     }
 }

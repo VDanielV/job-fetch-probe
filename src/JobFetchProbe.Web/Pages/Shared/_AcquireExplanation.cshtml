@@ -1,0 +1,10 @@
+<p class="intro">
+    An acquisition reads the search pages you saved, stores every job they list, then visits each new job once to fetch
+    its description. It runs in the background on the API, politely (one request at a time, with pauses) and stops by
+    itself if LinkedIn refuses; what it has read is kept.
+</p>
+<ol class="flow">
+    <li><strong>Save search pages</strong>Save LinkedIn result pages into <code>input</code> in your data folder.</li>
+    <li><strong>Job links</strong>Each page is read and its jobs stored; the page moves to <code>input\archived</code>.</li>
+    <li><strong>Descriptions</strong>Each job without a description is fetched, one at a time.</li>
+</ol>

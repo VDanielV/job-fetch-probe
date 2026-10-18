@@ -4,7 +4,7 @@ namespace JobFetchProbe.Web.Api;
 
 /// <summary>
 /// The two calls the web app makes to the API's JobCatalog controller. The web app reads jobs only through these.
-/// Both throw <see cref="JobCatalogUnavailableException"/> when the jobs cannot be shown (no database yet, or no API).
+/// Both throw <see cref="ApiUnavailableException"/> when the jobs cannot be shown (no database yet, or no API).
 /// </summary>
 public interface IJobCatalogClient
 {

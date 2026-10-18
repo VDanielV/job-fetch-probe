@@ -1,33 +1,233 @@
 @page
 @model AcquireModel
+@using JobFetchProbe.Models.Journal
 @{
     ViewData["Title"] = "Acquire";
     ViewData["Nav"] = "Acquire";
+    var v = Model.View;
+    var busy = Model.Refresh;
+}
+
+@section Head {
+    @if (Model.Refresh)
+    {
+        <meta http-equiv="refresh" content="@AcquireModel.RefreshSeconds">
+    }
 }
 
 <header class="page-head">
     <div>
         <h1>Acquire</h1>
-        <p>How new jobs get into the database. For now this happens outside the web app, with the console app.</p>
+        <p>Bring new jobs into the database.</p>
     </div>
 </header>
 
 <div class="content">
-    <ol class="steps">
-        <li>
-            <strong>Save search result pages</strong>
-            In your browser, search for jobs and save each results page (Save page as → Webpage, Complete) into the
-            <code>input</code> folder of your data folder (<code>Paths:DataRoot</code>, see the README).
-        </li>
-        <li>
-            <strong>Run the console app</strong>
-            <code>dotnet run --project src/JobFetchProbe.Console</code>. Step 1 stores every job link from the saved pages
-            and moves them to <code>input\archived</code>; step 2 reads each new job's description, one at a time.
-        </li>
-        <li>
-            <strong>See the result</strong>
-            Open <a class="link" asp-page="/Index">Overview</a>: the new jobs are there. Reload the page
-            while the console app runs to see descriptions arrive.
-        </li>
-    </ol>
+    <div class="acquire">
+        @if (Model.Banner is { } banner)
+        {
+            <partial name="_Banner" model="banner" />
+        }
+        @if (Model.Unavailable is not null && Model.Banner is null)
+        {
+            <partial name="_Banner" model="@(new PageBanner("error", "The API is not reachable.", Model.Unavailable))" />
+        }
+
+        @if (Model.ShowProgress)
+        {
+            <details class="howto">
+                <summary>How it works</summary>
+                <partial name="_AcquireExplanation" />
+            </details>
+        }
+        else
+        {
+            <section class="explain">
+                <partial name="_AcquireExplanation" />
+            </section>
+        }
+
+        <div class="launch">
+            <form method="post">
+                <button class="start" type="submit" disabled="@(busy ? "disabled" : null)">
+                    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4.5v11a1 1 0 0 0 1.5.86l9-5.5a1 1 0 0 0 0-1.72l-9-5.5A1 1 0 0 0 6 4.5z"/></svg>
+                    @(busy ? "Running…" : "Start acquisition")
+                </button>
+            </form>
+            <div>
+                <p class="small-label">@(Model.ShowProgress ? "Acquisition" : "Last acquisition")</p>
+                <p class="lastrun">
+                    @if (v is null)
+                    {
+                        <span>unknown (the API is not reachable)</span>
+                    }
+                    else if (v.IsStarting)
+                    {
+                        <span class="status Starting">Starting</span><span>waiting for it to appear in the journal</span>
+                    }
+                    else if (v.Listing is null)
+                    {
+                        <span>No acquisition yet.</span>
+                    }
+                    else if (v.IsRunning)
+                    {
+                        <span class="status Running">Running</span><span>since @v.When(v.StartedAt), started from @v.StartedBy</span>
+                    }
+                    else
+                    {
+                        <span class="status @v.StateText">@v.StateText</span>
+                        <span>@v.When(v.Details?.FinishedAt ?? v.Listing.FinishedAt ?? v.Listing.LastSeenAt), started from @v.StartedBy</span>
+                        @if (!Model.ShowProgress)
+                        {
+                            <span> · @Short(v.Details?.Message ?? v.Listing.Message) · <a class="link" asp-page="/Index">see the jobs</a></span>
+                        }
+                    }
+                </p>
+            </div>
+        </div>
+
+        @if (Model.ShowProgress && v is not null)
+        {
+            <section class="progress-pane" aria-live="polite">
+                <div class="pp-head">
+                    <h2>
+                        @if (busy)
+                        {
+                            <span class="pulse" aria-hidden="true"></span>
+                        }
+                        @v.Heading
+                    </h2>
+                    @if (busy)
+                    {
+                        <small>updated @v.Now.ToLocalTime().ToString("HH:mm:ss") · refreshes every @AcquireModel.RefreshSeconds s</small>
+                    }
+                    else
+                    {
+                        <a class="link" asp-page="/Acquire">Close</a>
+                    }
+                </div>
+
+                @if (v.EndBanner is { } end)
+                {
+                    <div class="pp-banner"><partial name="_Banner" model="end" /></div>
+                }
+
+                <div class="pp-step">
+                    <h3>Step 1 · Job links<small>saved pages</small></h3>
+                    <div>
+                        @if (v.Listing is not { } l)
+                        {
+                            <span class="muted">Waiting to start…</span>
+                        }
+                        else
+                        {
+                            <span class="status @l.State">@l.State</span>
+                            <div class="facts-inline">
+                                @if (l.Pages == 0 && l.State != JournalRunState.Running)
+                                {
+                                    <span>No saved pages in the input folder: nothing new to add.</span>
+                                }
+                                else
+                                {
+                                    <span>@l.PagesRead page(s) read, @l.PagesKept kept</span>
+                                    <span>@l.JobsStored job links stored, @l.NewJobs new</span>
+                                    @if (l.ListingId is not null)
+                                    {
+                                        <span class="muted">listing @l.ListingId</span>
+                                    }
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <div class="pp-step">
+                    <h3>Step 2 · Descriptions<small>one at a time</small></h3>
+                    <div>
+                        @if (v.Details is not { } d)
+                        {
+                            <span class="muted">@(busy ? "Waits for step 1." : "Not started.")</span>
+                        }
+                        else if (d.Total == 0)
+                        {
+                            <span class="status @d.State">@d.State</span>
+                            <div class="facts-inline"><span>Every job already has its description: nothing to read.</span></div>
+                        }
+                        else
+                        {
+                            <div class="facts-inline">
+                                @if (busy)
+                                {
+                                    <b>Job @v.JobsDone of @d.Total</b>
+                                }
+                                else
+                                {
+                                    <b>@v.JobsDone of @d.Total tried</b>
+                                }
+                                <span>ok @d.Fetched · failed @d.Failed</span>
+                                @if (!busy && d.ToRead > 0)
+                                {
+                                    <span>@d.ToRead not tried</span>
+                                }
+                                @if (busy && d.EtaSeconds is { } eta)
+                                {
+                                    <span>~@AcquisitionView.Duration(TimeSpan.FromSeconds(eta)) left</span>
+                                }
+                                <span class="chip2 @(d.CircuitState == JournalCircuitState.Closed ? "closed" : "open")">● @v.CircuitText</span>
+                            </div>
+                            <div class="bar" role="progressbar" aria-valuenow="@v.Percent" aria-valuemin="0" aria-valuemax="100"><span style="width:@(v.Percent)%"></span></div>
+                        }
+                    </div>
+                </div>
+
+                @if (v.Activity.Count > 0)
+                {
+                    <div class="activity">
+                        <p class="small-label">Recent activity</p>
+                        <table>
+                            <tbody>
+                                @foreach (var a in v.Activity)
+                                {
+                                    <tr>
+                                        <td class="muted">@a.At.ToLocalTime().ToString("HH:mm:ss")</td>
+                                        <td><span class="status @a.TagClass">@a.Tag</span></td>
+                                        <td>@a.Subject</td>
+                                        <td class="muted">@a.Text</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+
+                <div class="pp-foot">
+                    <a class="link" asp-page="/Index">See the jobs in Overview</a>
+                    @if (v.Listing is not null)
+                    {
+                        <span>·</span>
+                        <span>Journal: step 1 run @v.Listing.RunId</span>
+                        @if (v.Details is not null)
+                        {
+                            <span>step 2 run @v.Details.RunId</span>
+                        }
+                    }
+                </div>
+            </section>
+        }
+    </div>
 </div>
+
+@functions {
+    private static string Short(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return string.Empty;
+        }
+        if (text.Length <= 110)
+        {
+            return text;
+        }
+        return text[..109] + "…";
+    }
+}
