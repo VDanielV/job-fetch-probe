@@ -1,0 +1,21 @@
+@model JobFetchProbe.Web.Pages.IndexModel
+@using JobFetchProbe.Models.Filter
+@* The list settings, carried by the archive forms so the page comes back the same: archived, filter, scope, size. *@
+<input type="hidden" name="archived" value="@(Model.ShowArchived ? 1 : 0)" />
+@if (Model.Filtering)
+{
+    <input type="hidden" name="q" value="@Model.Query" />
+}
+@if (Model.Scope == FilterScope.Title)
+{
+    <input type="hidden" name="in" value="title" />
+}
+<input type="hidden" name="size" value="@Model.Size" />
+@foreach (var place in Model.Places)
+{
+    <input type="hidden" name="place" value="@place" />
+}
+@foreach (var mode in Model.Modes)
+{
+    <input type="hidden" name="mode" value="@mode" />
+}

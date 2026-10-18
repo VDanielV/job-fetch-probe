@@ -1,3 +1,4 @@
+using JobFetchProbe.Models.Archive;
 using JobFetchProbe.Models.Jobs;
 
 namespace JobFetchProbe.Models.Catalog;
@@ -22,4 +23,7 @@ public sealed record StoredJob
     public DateTimeOffset FirstSeenAt { get; init; }
     public DateTimeOffset? RetrievedAt { get; init; }
     public DateTimeOffset? LastAttemptAt { get; init; }
+
+    /// <summary>When and why the job was archived; null for a job to review.</summary>
+    public JobArchiveInfo? Archive { get; init; }
 }

@@ -1,0 +1,53 @@
+@model JobFetchProbe.Web.Pages.IndexModel
+@using JobFetchProbe.Models.Filter
+@* The text filter: applies on Enter (a GET form, so it works without the script); the scope links apply at once. *@
+@{
+    var jobs = Model.Jobs!;
+}
+<div class="filter-bar">
+    <form method="get" asp-page="/Index" class="filter-search" role="search" data-filter-form>
+        @if (Model.ShowArchived)
+        {
+            <input type="hidden" name="archived" value="1" />
+        }
+        @if (Model.Scope == FilterScope.Title)
+        {
+            <input type="hidden" name="in" value="title" />
+        }
+        @if (Model.Size != JobFetchProbe.Web.Pages.IndexModel.DefaultPageSize)
+        {
+            <input type="hidden" name="size" value="@Model.Size" />
+        }
+        @foreach (var place in Model.Places)
+        {
+            <input type="hidden" name="place" value="@place" />
+        }
+        @foreach (var mode in Model.Modes)
+        {
+            <input type="hidden" name="mode" value="@mode" />
+        }
+        <span class="filter-icon" aria-hidden="true">⌕</span>
+        <label class="visually-hidden" for="filter-q">Filter the jobs</label>
+        <input id="filter-q" name="q" value="@Model.Query" placeholder="Filter: words, -word, &quot;a phrase&quot;   ( / )" autocomplete="off" data-filter-q />
+        @if (Model.Filtering)
+        {
+            <a class="filter-clear" href="@Model.Link(1, null, clearFilter: true)" title="Clear the filter" aria-label="Clear the filter">✕</a>
+        }
+    </form>
+    <div class="filter-scope" role="group" aria-label="Where to look">
+        <a class="@(Model.Scope == FilterScope.Title ? "on" : null)" href="@Model.Link(1, Model.SelectedId, scope: FilterScope.Title)" data-filter-scope="title">Title</a>
+        <a class="@(Model.Scope == FilterScope.All ? "on" : null)" href="@Model.Link(1, Model.SelectedId, scope: FilterScope.All)" data-filter-scope="all">Title + description</a>
+    </div>
+    @if (Model.AnyFilter)
+    {
+        <span class="filter-result"><b>@jobs.Total</b> of @jobs.UnfilteredTotal match</span>
+        var pickable = jobs.Jobs.Count(j => j.Archive is null);
+        if (pickable > 0)
+        {
+            <button type="button" class="filter-tick" data-filter-tick hidden>
+                Tick all @pickable @(pickable == 1 ? "match" : "matches")@(jobs.TotalPages > 1 ? " on this page" : "")
+            </button>
+        }
+    }
+</div>
+<partial name="_LocationChips" model="Model" />

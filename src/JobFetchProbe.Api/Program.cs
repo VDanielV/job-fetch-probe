@@ -1,19 +1,25 @@
 using System.Text.Json.Serialization;
+using JobFetchProbe.Api.Fit;
 using JobFetchProbe.Api.Handlers;
 using JobFetchProbe.Data;
+using JobFetchProbe.Data.Archive;
 using JobFetchProbe.Data.Configuration;
 using JobFetchProbe.Infrastructure;
 using JobFetchProbe.Services;
+using JobFetchProbe.Services.Archive;
 using Microsoft.Extensions.Options;
 
 // RESTful API over the jobs database. It reads the stored jobs and the journal, and can start an acquisition.
 //   POST api/JobFetcher                      starts an acquisition in the background (202), or 409 if one is running
 //   POST api/JobFetcher/stop                 stops the acquisition started here (202), or 409 if there is none
-//   GET api/JobCatalog?page=1&pageSize=25   one page of jobs (JobSummaryPage)
+//   POST api/ArchivedJobs                    archives jobs the owner will not apply to (ArchiveRequest → ArchiveResult)
+//   GET api/JobCatalog?page=1&pageSize=25   one page of jobs to review (JobSummaryPage; &includeArchived=true for all)
 //   GET api/JobCatalog/{jobId}               one job with its details and description (StoredJob)
 //   GET api/Journal/runs?take=10             recent runs of both steps (journal)
 //   GET api/Journal/job-listing/runs/{id}?after={entryId}   a step 1 run and its new entries
 //   GET api/Journal/job-details/runs/{id}?after={entryId}   a step 2 run and its new entries
+//   POST api/Chat                            one message to the local model (ChatRequest → ChatResponse)
+//   POST api/JobFit                          score one stored job (JobFitRequest → JobFitResult)
 //   GET openapi/v1.json                      the API description (Development only)
 
 var builder = WebApplication.CreateBuilder(args);
@@ -28,7 +34,8 @@ builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<JobStoreUnavailableHandler>();
 builder.Services.AddExceptionHandler<JournalUnavailableHandler>();
-builder.Services.AddExceptionHandler<UnexpectedErrorHandler>(); // last: everything the two above leave
+builder.Services.AddExceptionHandler<LocalChatUnavailableHandler>();
+builder.Services.AddExceptionHandler<UnexpectedErrorHandler>(); // last: everything the handlers above leave
 
 // The controllers use the service layer (IJobRetriever, IJournalService, IAcquisitionRunner). The data layer
 // (the database, read-write: the acquisition stores jobs) and Infrastructure (HTTP client, saved pages, input folder)
@@ -40,6 +47,19 @@ builder.Services
     .AddJournal()
     .AddInfrastructure(builder.Configuration)
     .AddJobStore(builder.Configuration);
+
+// Archiving jobs (ArchivedJobsController): its own service and table, apart from the acquisition.
+builder.Services
+    .AddJobArchive()
+    .AddJobArchiveStore();
+
+// One-turn chat (ChatController) and job fit (JobFitController). AddOllama is the local model both call.
+// FitDocuments reads the Fit folder in this project.
+builder.Services
+    .AddChat()
+    .AddJobFit()
+    .AddSingleton<JobFetchProbe.Services.Fit.IFitDocuments, FitDocuments>()
+    .AddOllama(builder.Configuration);
 
 // The host logs a start-up failure with its stack trace before throwing it; a configuration error is reported below in
 // one line instead. Other start-up failures (a port in use, say) still end the process with their error.

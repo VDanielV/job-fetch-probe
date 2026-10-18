@@ -17,6 +17,7 @@ public sealed class SqliteJobRepository(IDbContextFactory<JobsDbContext> context
         await using var db = await contexts.CreateDbContextAsync(ct);
         var rows = await db.Jobs.AsNoTracking()
             .Where(j => JobStatus.ToRead.Contains(j.Status))
+            .Where(j => !db.ArchivedJobs.Any(a => a.JobId == j.JobId)) // archived: never requested again
             .ToListAsync(ct);
 
         // Sorted here: SQLite cannot order by DateTimeOffset. Never-tried jobs first, then oldest first.

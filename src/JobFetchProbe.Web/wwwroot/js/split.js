@@ -5,7 +5,8 @@
 (() => {
     document.querySelectorAll("tr[data-href]").forEach(row => {
         row.addEventListener("click", e => {
-            if (!e.target.closest("a")) {
+            // Links, and the archive checkboxes in the first column, do their own thing.
+            if (!e.target.closest("a, input, button, select, label, td.pick")) {
                 location.href = row.dataset.href;
             }
         });

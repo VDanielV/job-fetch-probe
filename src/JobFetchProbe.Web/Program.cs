@@ -4,10 +4,12 @@ using Microsoft.Extensions.Options;
 // A web page over the jobs, read from the API (JobFetchProbe.Api, which must be running):
 //   /             all jobs, newest first, 25 per page       ← GET api/JobCatalog?page=&pageSize=
 //   /?job={id}    the same, with that job in the details pane ← GET api/JobCatalog/{jobId}
+//                 archive the ticked jobs, or the one in the pane ← POST api/ArchivedJobs (?archived=1 shows them)
 //   /acquire      explains the acquisition and starts it   ← POST api/JobFetcher
 //                 (?since=…) its progress, refreshed every 15 s  ← GET api/Journal/runs, api/Journal/<step>/runs/{id}
 //   /jobs/{id}    old address of a job: redirects to /?job={id}
-// It never touches the database itself.
+//   /chat         one message to the local model          ← POST api/Chat
+// It never touches the database itself. The chat answer is not stored.
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,10 +23,17 @@ builder.Services.AddOptions<JobCatalogApiSettings>()
 
 builder.Services.AddSingleton(TimeProvider.System);
 
-// Typed clients through IHttpClientFactory: pooled handlers, nothing to dispose. All three call the same API.
+// Typed clients through IHttpClientFactory: pooled handlers, nothing to dispose. All five call the same API.
+// Chat waits longer than the others: one local answer can take most of a minute, and the catalog must still fail fast.
 builder.Services.AddHttpClient<IJobCatalogClient, JobCatalogClient>(ConfigureApi);
 builder.Services.AddHttpClient<IJobFetcherClient, JobFetcherClient>(ConfigureApi);
 builder.Services.AddHttpClient<IJournalClient, JournalClient>(ConfigureApi);
+builder.Services.AddHttpClient<IJobArchiveClient, JobArchiveClient>(ConfigureApi);
+builder.Services.AddHttpClient<IChatApiClient, ChatApiClient>((services, client) =>
+{
+    ConfigureApi(services, client);
+    client.Timeout = TimeSpan.FromSeconds(ChatApiClient.TimeoutSeconds);
+});
 
 var app = builder.Build();
 app.MapStaticAssets();

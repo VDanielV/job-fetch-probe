@@ -1,0 +1,36 @@
+@model JobFetchProbe.Web.Pages.IndexModel
+@using JobFetchProbe.Web.Pages
+@* C: archive the job in the pane; the page then opens the job that came after it. Keys 1, 2, 3 press the buttons. *@
+@{
+    var job = Model.Selected!;
+}
+@if (job.Archive is { } archived)
+{
+    <div class="archived-info">
+        <b>Archived</b> on @IndexModel.When(archived.ArchivedAt) · @ArchiveReasonText.Label(archived.Reason)
+        @if (!string.IsNullOrWhiteSpace(archived.Note))
+        {
+            <span> · @archived.Note</span>
+        }
+    </div>
+}
+else
+{
+    <form method="post" asp-page="/Index" asp-page-handler="ArchiveOpen" class="archive-box" data-archive-box>
+        <input type="hidden" name="jobId" value="@job.JobId" />
+        <input type="hidden" name="index" value="@Model.PositionOf(job.JobId)" />
+        <input type="hidden" name="p" value="@Model.Jobs!.Page" />
+        <partial name="_ListState" model="Model" />
+        <div class="archive-box-title">Not for me? Archive and open the next job</div>
+        <div class="archive-box-buttons">
+            @for (var i = 0; i < ArchiveReasonText.Quick.Count; i++)
+            {
+                var reason = ArchiveReasonText.Quick[i];
+                <button type="submit" name="reason" value="@reason" data-archive-key="@(i + 1)"><kbd>@(i + 1)</kbd>@ArchiveReasonText.Label(reason)</button>
+            }
+            <button type="submit" name="reason" value="Other" data-archive-other>Other</button>
+        </div>
+        <label class="visually-hidden" for="archive-box-note">Note</label>
+        <input id="archive-box-note" name="note" maxlength="500" placeholder="Note (optional; required for Other)" autocomplete="off" />
+    </form>
+}

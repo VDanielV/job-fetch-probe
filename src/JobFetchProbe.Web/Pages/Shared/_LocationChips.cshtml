@@ -1,0 +1,31 @@
+@model JobFetchProbe.Web.Pages.IndexModel
+@* City and work-mode chips: links, so they work without the script. Within a row: or; between rows and the text: and. *@
+@{
+    var jobs = Model.Jobs!;
+}
+@if (jobs.Places is { Count: > 0 } places)
+{
+    <div class="chip-row" role="group" aria-label="Location">
+        <span class="chip-label">Location</span>
+        @foreach (var chip in places)
+        {
+            <a class="fchip @(chip.Selected ? "on" : null) @(chip.Count == 0 && !chip.Selected ? "zero" : null)" href="@Model.ToggleChip("place", chip.Key)"
+               aria-pressed="@(chip.Selected ? "true" : "false")">@chip.Label <i>@chip.Count</i>@if (chip.Selected){<span class="x" aria-hidden="true">✕</span>}</a>
+        }
+    </div>
+}
+@if (jobs.Modes is { Count: > 0 } modes)
+{
+    <div class="chip-row mode" role="group" aria-label="Work mode">
+        <span class="chip-label">Work mode</span>
+        @foreach (var chip in modes)
+        {
+            <a class="fchip @(chip.Selected ? "on" : null) @(chip.Count == 0 && !chip.Selected ? "zero" : null)" href="@Model.ToggleChip("mode", chip.Key)"
+               aria-pressed="@(chip.Selected ? "true" : "false")">@chip.Label <i>@chip.Count</i>@if (chip.Selected){<span class="x" aria-hidden="true">✕</span>}</a>
+        }
+        @if (Model.Places.Count > 0 || Model.Modes.Count > 0)
+        {
+            <a class="chip-clear" href="@Model.Link(1, Model.SelectedId, places: [], modes: [])">Clear chips</a>
+        }
+    </div>
+}

@@ -1,5 +1,7 @@
 using JobFetchProbe.Services.Acquisition;
 using JobFetchProbe.Services.Catalog;
+using JobFetchProbe.Services.Chat;
+using JobFetchProbe.Services.Fit;
 using JobFetchProbe.Services.FetchJobDetails;
 using JobFetchProbe.Services.FetchJobListing;
 using JobFetchProbe.Services.Journal;
@@ -67,6 +69,27 @@ public static class DependencyInjection
     public static IServiceCollection AddJobRetriever(this IServiceCollection services)
     {
         services.AddSingleton<IJobRetriever, JobRetriever>();
+        return services;
+    }
+
+    /// <summary>
+    /// One-turn chat (<see cref="IChatService"/>). Needs an <see cref="Abstractions.ILocalChatModel"/> from the
+    /// infrastructure layer. Transient, because that model is a typed HTTP client and must not be held by a singleton.
+    /// </summary>
+    public static IServiceCollection AddChat(this IServiceCollection services)
+    {
+        services.AddTransient<IChatService, ChatService>();
+        return services;
+    }
+
+    /// <summary>
+    /// Scores one stored job (<see cref="IJobFitService"/>). Needs <see cref="AddJobRetriever"/>, an
+    /// <see cref="IFitDocuments"/>, and an <see cref="Abstractions.ILocalChatModel"/>. Transient, for the same reason as
+    /// <see cref="AddChat"/>.
+    /// </summary>
+    public static IServiceCollection AddJobFit(this IServiceCollection services)
+    {
+        services.AddTransient<IJobFitService, JobFitService>();
         return services;
     }
 

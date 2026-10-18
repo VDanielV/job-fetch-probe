@@ -17,6 +17,28 @@ namespace JobFetchProbe.Data.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.13");
 
+            modelBuilder.Entity("JobFetchProbe.Data.Archive.Entities.ArchivedJobRow", b =>
+                {
+                    b.Property<string>("JobId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("ArchivedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("JobId");
+
+                    b.ToTable("ArchivedJobs", (string)null);
+                });
+
             modelBuilder.Entity("JobFetchProbe.Data.Entities.JobDetailRow", b =>
                 {
                     b.Property<int>("Id")
@@ -402,6 +424,15 @@ namespace JobFetchProbe.Data.Migrations
                     b.HasIndex("State");
 
                     b.ToTable("JobListingJournalRuns", (string)null);
+                });
+
+            modelBuilder.Entity("JobFetchProbe.Data.Archive.Entities.ArchivedJobRow", b =>
+                {
+                    b.HasOne("JobFetchProbe.Data.Entities.JobRow", null)
+                        .WithOne()
+                        .HasForeignKey("JobFetchProbe.Data.Archive.Entities.ArchivedJobRow", "JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("JobFetchProbe.Data.Entities.JobDetailRow", b =>

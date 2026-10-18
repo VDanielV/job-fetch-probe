@@ -1,0 +1,18 @@
+@model JobFetchProbe.Web.Pages.IndexModel
+@using JobFetchProbe.Web.Pages
+@* A: archive the ticked rows. Without the script the bar is always shown; with it, only while a row is ticked. *@
+<div class="archive-bar" data-archive-bar>
+    <span class="archive-count" data-archive-count>Tick the jobs you will not apply to</span>
+    <label class="visually-hidden" for="archive-reason">Reason</label>
+    <select id="archive-reason" name="reason">
+        @foreach (var reason in ArchiveReasonText.All)
+        {
+            <option value="@reason">@ArchiveReasonText.Label(reason)</option>
+        }
+    </select>
+    <label class="visually-hidden" for="archive-note">Note</label>
+    <input id="archive-note" name="note" maxlength="500" placeholder="Note (optional; required for Other)" autocomplete="off" />
+    <span class="archive-space"></span>
+    <button type="button" class="archive-clear" data-archive-clear>Clear</button>
+    <button type="submit" class="archive-go" data-archive-go>Archive selected</button>
+</div>

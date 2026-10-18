@@ -1,0 +1,169 @@
+using System.Text.Json;
+using JobFetchProbe.Models.Fit;
+using JobFetchProbe.Services.Abstractions;
+using JobFetchProbe.Services.Catalog;
+using JobFetchProbe.Services.Chat;
+
+namespace JobFetchProbe.Services.Fit;
+
+/// <summary>Loads one stored job, asks the local model for a JSON score, and checks the answer.</summary>
+public sealed class JobFitService(IJobRetriever jobs, IFitDocuments documents, ILocalChatModel model) : IJobFitService
+{
+    public async Task<JobFitResult?> AssessAsync(JobFitRequest request, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.JobId))
+        {
+            throw new JobFitRequestException("jobId", "Choose a job to score.");
+        }
+
+        var job = await jobs.GetJobAsync(request.JobId.Trim(), ct);
+        if (job is null)
+        {
+            return null;
+        }
+        if (string.IsNullOrWhiteSpace(job.Description))
+        {
+            throw new JobFitRequestException("description", "This job has no description yet, so it cannot be scored.");
+        }
+
+        var message = JobFitPrompt.Build(documents.Load(), job);
+        var answer = await model.CompleteJsonAsync(message, ct);
+        return Read(answer.Content);
+    }
+
+    private static JobFitResult Read(string content)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(StripFence(content));
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                throw new JsonException("The answer was not a JSON object.");
+            }
+
+            if (!Enum.TryParse<JobFitDecision>(RequiredString(root, "decision"), ignoreCase: true, out var decision))
+            {
+                throw new JsonException("The decision was not Apply, Maybe, or Skip.");
+            }
+
+            var fit = ReadFit(root);
+            var reason = RequiredString(root, "reason");
+            var hardSkip = ReadBool(root, "hardSkip");
+            if (hardSkip)
+            {
+                decision = JobFitDecision.Skip;
+            }
+
+            return new JobFitResult(decision, fit, reason, hardSkip, ReadMissing(root));
+        }
+        catch (Exception ex) when (ex is JsonException or FormatException or InvalidOperationException)
+        {
+            throw new LocalChatUnavailableException("Ollama returned a fit this app could not read.", ex);
+        }
+    }
+
+    private static string StripFence(string content)
+    {
+        var text = content.Trim();
+        if (!text.StartsWith("```", StringComparison.Ordinal))
+        {
+            return text;
+        }
+
+        var firstLine = text.IndexOf('\n');
+        var lastFence = text.LastIndexOf("```", StringComparison.Ordinal);
+        if (firstLine < 0 || lastFence <= firstLine)
+        {
+            return text;
+        }
+
+        return text[(firstLine + 1)..lastFence].Trim();
+    }
+
+    private static string RequiredString(JsonElement root, string name)
+    {
+        if (!TryProperty(root, name, out var value) || value.ValueKind != JsonValueKind.String)
+        {
+            throw new JsonException($"The answer had no {name}.");
+        }
+
+        var text = value.GetString()?.Trim();
+        if (string.IsNullOrEmpty(text))
+        {
+            throw new JsonException($"The answer had an empty {name}.");
+        }
+
+        return text;
+    }
+
+    private static int ReadFit(JsonElement root)
+    {
+        if (!TryProperty(root, "fit", out var value) || value.ValueKind != JsonValueKind.Number)
+        {
+            throw new JsonException("The answer had no fit number.");
+        }
+
+        var fit = (int)Math.Round(value.GetDouble(), MidpointRounding.AwayFromZero);
+        if (fit is < 0 or > 100)
+        {
+            throw new JsonException("The fit was outside 0 to 100.");
+        }
+
+        return fit;
+    }
+
+    private static bool ReadBool(JsonElement root, string name)
+    {
+        if (!TryProperty(root, name, out var value) || value.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+        {
+            throw new JsonException($"The answer had no {name}.");
+        }
+
+        return value.GetBoolean();
+    }
+
+    private static IReadOnlyList<string> ReadMissing(JsonElement root)
+    {
+        if (!TryProperty(root, "missingInformation", out var value))
+        {
+            return [];
+        }
+        if (value.ValueKind != JsonValueKind.Array)
+        {
+            throw new JsonException("missingInformation was not a list.");
+        }
+
+        var items = new List<string>();
+        foreach (var item in value.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String)
+            {
+                throw new JsonException("missingInformation contained something other than text.");
+            }
+
+            var text = item.GetString()?.Trim();
+            if (!string.IsNullOrEmpty(text))
+            {
+                items.Add(text);
+            }
+        }
+
+        return items;
+    }
+
+    private static bool TryProperty(JsonElement root, string name, out JsonElement value)
+    {
+        foreach (var property in root.EnumerateObject())
+        {
+            if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.Value;
+                return true;
+            }
+        }
+
+        value = default;
+        return false;
+    }
+}

@@ -1,0 +1,38 @@
+@page
+@model ChatModel
+@using JobFetchProbe.Models.Chat
+@{
+    ViewData["Title"] = "Chat";
+    ViewData["Nav"] = "Chat";
+}
+
+<header class="page-head">
+    <div>
+        <h1>Chat</h1>
+        <p>One message to the local model. Nothing is saved.</p>
+    </div>
+</header>
+
+<div class="content">
+    <form method="post" class="chat">
+        <label for="message">Message</label>
+        <textarea id="message" name="Message" maxlength="@ChatRequest.MaxMessageLength" required>@Model.Message</textarea>
+        <button class="start chat-send" type="submit">Send</button>
+        <p class="chat-wait">One answer can take about a minute.</p>
+
+        @if (Model.Error is not null)
+        {
+            <div class="error-pane" role="alert">
+                <h2>No answer</h2>
+                <p class="error-message">@Model.Error</p>
+            </div>
+        }
+        else if (Model.Answer is not null)
+        {
+            <section class="answer" aria-live="polite">
+                <p class="model">@Model.ModelName</p>
+                <p>@Model.Answer</p>
+            </section>
+        }
+    </form>
+</div>

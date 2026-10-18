@@ -10,6 +10,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Update="Fit\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\JobFetchProbe.Services\JobFetchProbe.Services.csproj" />
     <!-- Only for Program.cs, which wires Data and Infrastructure into DI. Controllers use Services types only. -->
     <ProjectReference Include="..\JobFetchProbe.Data\JobFetchProbe.Data.csproj" />

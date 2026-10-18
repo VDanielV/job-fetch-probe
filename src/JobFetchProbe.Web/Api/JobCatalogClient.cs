@@ -1,5 +1,6 @@
 using System.Net;
 using JobFetchProbe.Models.Catalog;
+using JobFetchProbe.Models.Filter;
 using Microsoft.AspNetCore.Mvc;
 
 namespace JobFetchProbe.Web.Api;
@@ -12,12 +13,35 @@ public sealed class JobCatalogClient(HttpClient http) : IJobCatalogClient
 {
     private const string Route = "api/JobCatalog";
 
-    public async Task<JobSummaryPage> GetPageAsync(int page, int pageSize, CancellationToken ct = default)
+    public async Task<JobSummaryPage> GetPageAsync(
+        int page, int pageSize, bool includeArchived = false, string? query = null, FilterScope scope = FilterScope.All,
+        IReadOnlyList<string>? places = null, IReadOnlyList<string>? modes = null, CancellationToken ct = default)
     {
-        using var response = await SendAsync($"{Route}?page={page}&pageSize={pageSize}", ct);
+        var path = $"{Route}?page={page}&pageSize={pageSize}";
+        if (includeArchived)
+        {
+            path += "&includeArchived=true";
+        }
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            path += "&q=" + Uri.EscapeDataString(query.Trim());
+            if (scope == FilterScope.Title)
+            {
+                path += "&in=title";
+            }
+        }
+        foreach (var place in places ?? [])
+        {
+            path += "&place=" + Uri.EscapeDataString(place);
+        }
+        foreach (var mode in modes ?? [])
+        {
+            path += "&mode=" + Uri.EscapeDataString(mode);
+        }
+        using var response = await SendAsync(path, ct);
         await ThrowIfUnavailableAsync(response, ct);
         await ApiCall.EnsureSuccessAsync(response, ct);
-        return await response.Content.ReadFromJsonAsync<JobSummaryPage>(ct)
+        return await response.Content.ReadFromJsonAsync<JobSummaryPage>(ApiJson.Options, ct)
             ?? throw new InvalidOperationException("The API returned an empty page.");
     }
 
@@ -30,7 +54,7 @@ public sealed class JobCatalogClient(HttpClient http) : IJobCatalogClient
         }
         await ThrowIfUnavailableAsync(response, ct);
         await ApiCall.EnsureSuccessAsync(response, ct);
-        return await response.Content.ReadFromJsonAsync<StoredJob>(ct);
+        return await response.Content.ReadFromJsonAsync<StoredJob>(ApiJson.Options, ct);
     }
 
     /// <summary>Sends the GET; a connection failure or a timeout means the API is not reachable.</summary>

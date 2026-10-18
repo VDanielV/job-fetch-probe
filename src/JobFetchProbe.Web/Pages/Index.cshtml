@@ -7,18 +7,43 @@
     var hasPane = Model.SelectedId is not null && jobs is not null;
 }
 
+@section Head {
+    <script src="~/js/archive.js" defer></script>
+    <script src="~/js/filter.js" defer></script>
+}
+
 <header class="page-head">
     <div>
         <h1>
             Jobs
             @if (jobs is not null)
             {
-                <span class="chip count">@jobs.Total</span>
+                var listed = jobs.UnfilteredTotal ?? jobs.Total; // the filter's matches are counted next to the box
+                if (Model.ShowArchived)
+                {
+                    <span class="chip count">@listed jobs · @jobs.ArchivedCount archived</span>
+                }
+                else
+                {
+                    <span class="chip count">@listed to review</span>
+                }
             }
         </h1>
-        <p>Every job collected from your saved search pages, newest first. Click a row to see its details.</p>
+        <p>The jobs you may still apply to, newest first. Click a row to read it; archive the ones you will not apply to.</p>
     </div>
+    @if (jobs is not null)
+    {
+        <a class="show-archived" href="@Model.Link(1, Model.SelectedId, showArchived: !Model.ShowArchived)"
+           role="checkbox" aria-checked="@(Model.ShowArchived ? "true" : "false")">
+            <span class="box @(Model.ShowArchived ? "on" : null)" aria-hidden="true"></span>Show archived (@jobs.ArchivedCount)
+        </a>
+    }
 </header>
+
+@if (Model.Banner is { } banner)
+{
+    <div class="overview-banner"><partial name="_Banner" model="banner" /></div>
+}
 
 @if (jobs is null)
 {
@@ -28,23 +53,66 @@
 
 <div class="workspace @(hasPane ? "has-pane" : null)">
     <section class="list">
+        <partial name="_FilterBar" model="Model" />
+        <form method="post" asp-page="/Index" asp-page-handler="ArchiveSelected" class="archive-form" data-archive-form>
+        <input type="hidden" name="p" value="@jobs.Page" />
+        <input type="hidden" name="job" value="@Model.SelectedId" />
+        <partial name="_ListState" model="Model" />
+        <partial name="_ArchiveBar" model="Model" />
         <div class="card">
             <div class="table-scroll">
                 <table>
                     <thead>
-                        <tr><th>Title</th><th>Company</th><th class="col-location">Location</th><th class="col-posted">Posted</th><th class="status-col">Status</th></tr>
+                        <tr><th class="pick"><input type="checkbox" aria-label="Tick every job on this page" data-archive-all /></th><th>Title</th><th>Company</th><th class="col-location">Location</th><th class="col-posted">Posted</th><th class="status-col">Status</th></tr>
                     </thead>
                     <tbody>
                         @foreach (var job in jobs.Jobs)
                         {
-                            var link = Url.Page("/Index", new { p = jobs.Page, job = job.JobId });
-                            <tr data-href="@link" class="@(job.JobId == Model.SelectedId ? "selected" : null)">
-                                <td class="title"><a href="@link">@(job.Title ?? job.JobId)</a></td>
+                            var link = Model.Link(jobs.Page, job.JobId);
+                            var rowClass = string.Join(" ", new[] { job.JobId == Model.SelectedId ? "selected" : null, job.Archive is not null ? "archived" : null }.Where(c => c is not null));
+                            <tr data-href="@link" class="@(rowClass.Length > 0 ? rowClass : null)">
+                                <td class="pick">
+                                    @if (job.Archive is null)
+                                    {
+                                        <input type="checkbox" name="jobIds" value="@job.JobId" aria-label="Tick @(job.Title ?? job.JobId)" data-archive-pick />
+                                    }
+                                </td>
+                                <td class="title"><a href="@link">@Highlight.Html(job.Title ?? job.JobId, jobs.Terms)</a>
+                                    @if (job.Archive is { } a)
+                                    {
+                                        <span class="archived-tag">@JobFetchProbe.Web.Pages.ArchiveReasonText.Label(a.Reason)</span>
+                                    }
+                                    @if (job.Snippet is not null)
+                                    {
+                                        <span class="snippet">in the description: “@Highlight.Html(job.Snippet, jobs.Terms)”</span>
+                                    }
+                                </td>
                                 <td>@job.Company</td>
-                                <td class="muted col-location">@job.Location</td>
+                                <td class="muted col-location">
+                                    @if (job.Place is not null)
+                                    {
+                                        <span class="place">@job.Place</span>
+                                        @if (job.WorkMode is { } mode && mode != JobFetchProbe.Models.Filter.WorkMode.NotStated)
+                                        {
+                                            <span class="mode-tag @mode">@(mode == JobFetchProbe.Models.Filter.WorkMode.OnSite ? "On-site" : mode.ToString())</span>
+                                        }
+                                        @if (!string.Equals(job.Place, job.Location, StringComparison.Ordinal))
+                                        {
+                                            <span class="raw">@job.Location</span>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        @job.Location
+                                    }
+                                </td>
                                 <td class="muted col-posted">@job.Posted</td>
                                 <td><span class="status @job.Status">@job.Status</span></td>
                             </tr>
+                        }
+                        @if (jobs.Jobs.Count == 0 && Model.AnyFilter)
+                        {
+                            <tr class="empty"><td colspan="6">No @(Model.ShowArchived ? "job" : "job to review") matches @(Model.Filtering ? "“" + Model.Query + "”" : "these chips")@(Model.Filtering && (Model.Places.Count > 0 || Model.Modes.Count > 0) ? " with these chips" : ""). <a href="@Model.Link(1, null, clearAll: true)">Clear the filters</a></td></tr>
                         }
                     </tbody>
                 </table>
@@ -54,11 +122,25 @@
                     var first = jobs.Total == 0 ? 0 : (jobs.Page - 1) * jobs.PageSize + 1;
                     var lastShown = Math.Min(jobs.Page * jobs.PageSize, jobs.Total);
                 }
-                <span>Showing @first–@lastShown of @jobs.Total jobs</span>
+                <span>Showing @first–@lastShown of @jobs.Total @(Model.AnyFilter ? (jobs.Total == 1 ? "match" : "matches") : Model.ShowArchived ? "jobs" : "jobs to review")</span>
+                <span class="page-size">
+                    @foreach (var n in IndexModel.PageSizes)
+                    {
+                        if (n == Model.Size)
+                        {
+                            <span class="on">@n</span>
+                        }
+                        else
+                        {
+                            <a href="@Model.Link(1, Model.SelectedId, size: n)">@n</a>
+                        }
+                    }
+                    per page
+                </span>
                 <nav aria-label="Pages">
                     @if (jobs.Page > 1)
                     {
-                        <a asp-page="/Index" asp-route-p="@(jobs.Page - 1)" asp-route-job="@Model.SelectedId" aria-label="Previous page">‹</a>
+                        <a href="@Model.Link(jobs.Page - 1, Model.SelectedId)" aria-label="Previous page">‹</a>
                     }
                     else
                     {
@@ -76,12 +158,12 @@
                         }
                         else
                         {
-                            <a asp-page="/Index" asp-route-p="@n" asp-route-job="@Model.SelectedId">@n</a>
+                            <a href="@Model.Link(n.Value, Model.SelectedId)">@n</a>
                         }
                     }
                     @if (jobs.Page < jobs.TotalPages)
                     {
-                        <a asp-page="/Index" asp-route-p="@(jobs.Page + 1)" asp-route-job="@Model.SelectedId" aria-label="Next page">›</a>
+                        <a href="@Model.Link(jobs.Page + 1, Model.SelectedId)" aria-label="Next page">›</a>
                     }
                     else
                     {
@@ -90,14 +172,15 @@
                 </nav>
             </footer>
         </div>
+        </form>
     </section>
 
     @if (hasPane)
     {
         <div class="splitter" role="separator" aria-orientation="vertical" aria-label="Resize the details pane" tabindex="0" title="Drag to resize · double-click to reset"></div>
-        <aside class="detail" aria-label="Job details">
+        <aside class="detail" aria-label="Job details" data-next="@Model.Neighbour(1)" data-previous="@Model.Neighbour(-1)">
             <div class="detail-top">
-                <a class="close" asp-page="/Index" asp-route-p="@jobs.Page" aria-label="Close the details" title="Close">✕</a>
+                <a class="close" href="@Model.Link(jobs.Page, null)" aria-label="Close the details" title="Close">✕</a>
                 @if (Model.Selected is { } s)
                 {
                     <span>#<span class="detail-id">@s.JobId</span></span>
@@ -111,9 +194,11 @@
             }
             else
             {
-                <h2>@(job.Title ?? job.JobId)</h2>
+                <h2>@Highlight.Html(job.Title ?? job.JobId, jobs.Terms)</h2>
                 <p class="where">@string.Join(" · ", new[] { job.Company, job.Location }.Where(s => !string.IsNullOrWhiteSpace(s)))</p>
                 <a class="button" href="@job.Url" target="_blank" rel="noopener noreferrer">Open the job page ↗</a>
+
+                <partial name="_ArchiveBox" model="Model" />
 
                 <dl class="facts">
                     <div><dt>Job ID</dt><dd>@job.JobId</dd></div>
@@ -142,13 +227,32 @@
                 </dl>
 
                 <h3>Description</h3>
-                @if (string.IsNullOrWhiteSpace(job.Description))
+                @if (Model.Filtering && jobs.Terms is { Count: > 0 } terms)
+                {
+                    var hits = Highlight.Count(job.Description, terms);
+                    <p class="filter-hits" data-filter-hits="@hits">
+                        @if (hits == 0)
+                        {
+                            <span>@string.Join(", ", terms.Select(t => "“" + t + "”")) not in the description.</span>
+                        }
+                        else
+                        {
+                            <span>@string.Join(", ", terms.Select(t => "“" + t + "”")) @(hits == 1 ? "appears once" : $"appears {hits} times") in the description</span>
+                            <span class="filter-hits-nav"><kbd>N</kbd> next · <kbd>Shift</kbd>+<kbd>N</kbd> previous</span>
+                        }
+                    </p>
+                }
+                @if (string.IsNullOrWhiteSpace(job.Description) && job.Archive is not null)
+                {
+                    <p class="note">No description: the job was archived before it was read, so it is not requested any more.</p>
+                }
+                else if (string.IsNullOrWhiteSpace(job.Description))
                 {
                     <p class="note">No description yet. The next acquisition reads it (status Pending, Blocked or Failed), unless the page is gone.</p>
                 }
                 else
                 {
-                    <div class="description">@job.Description</div>
+                    <div class="description">@Highlight.Html(job.Description, jobs.Terms)</div>
                 }
             }
         </aside>

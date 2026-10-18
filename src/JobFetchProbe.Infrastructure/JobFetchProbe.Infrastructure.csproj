@@ -10,4 +10,8 @@
     <ProjectReference Include="..\JobFetchProbe.Services\JobFetchProbe.Services.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Ollama\" />
+  </ItemGroup>
+
 </Project>

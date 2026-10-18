@@ -1,4 +1,5 @@
 using JobFetchProbe.Models.Catalog;
+using JobFetchProbe.Models.Filter;
 
 namespace JobFetchProbe.Services.Abstractions;
 
@@ -8,10 +9,16 @@ public interface IJobCatalog
     /// <summary>False while the database does not exist yet (the API creates it when it starts).</summary>
     bool IsAvailable { get; }
 
-    /// <summary>One page of jobs, newest job IDs first.</summary>
+    /// <summary>One page of jobs, newest job IDs first. Archived jobs are left out (and out of the count) unless asked for.</summary>
     /// <param name="page">1-based; out-of-range values are clamped to the first or last page.</param>
-    Task<JobSummaryPage> GetPageAsync(int page, int pageSize, CancellationToken ct = default);
+    Task<JobSummaryPage> GetPageAsync(int page, int pageSize, bool includeArchived = false, CancellationToken ct = default);
 
-    /// <summary>One job with its details and description, or null if it is not in the database.</summary>
+    /// <summary>
+    /// Every listed job with its description, newest job IDs first, for the text filter: the jobs to review, or all of
+    /// them with <paramref name="includeArchived"/>.
+    /// </summary>
+    Task<FilterCandidates> GetFilterCandidatesAsync(bool includeArchived = false, CancellationToken ct = default);
+
+    /// <summary>One job with its details, description and archive information, or null if it is not in the database.</summary>
     Task<StoredJob?> GetAsync(string jobId, CancellationToken ct = default);
 }

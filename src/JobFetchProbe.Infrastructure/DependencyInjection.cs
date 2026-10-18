@@ -2,6 +2,7 @@ using System.Net;
 using JobFetchProbe.Infrastructure.Files;
 using JobFetchProbe.Infrastructure.Http;
 using JobFetchProbe.Infrastructure.FetchJobListing;
+using JobFetchProbe.Infrastructure.Ollama;
 using JobFetchProbe.Services.Abstractions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -57,6 +58,32 @@ public static class DependencyInjection
 
         services.AddSingleton<ISavedPageReader, SavedPageReader>();
         services.AddSingleton<IInputFolder, InputFolder>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// The local chat model (<see cref="ILocalChatModel"/>), an Ollama server. Needs <c>AddChat</c> as well, which
+    /// registers the service that calls this client. Not part of <see cref="AddInfrastructure"/>: an acquisition does
+    /// not talk to Ollama.
+    /// </summary>
+    public static IServiceCollection AddOllama(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddOptions<OllamaSettings>()
+            .Bind(configuration.GetSection(OllamaSettings.SectionName))
+            .Validate(s => Uri.TryCreate(s.BaseUrl, UriKind.Absolute, out _), "Ollama:BaseUrl must be an absolute URL")
+            .Validate(s => !string.IsNullOrWhiteSpace(s.Model), "Ollama:Model is required")
+            .Validate(s => s.TimeoutSeconds is >= 1 and <= 300, "Ollama:TimeoutSeconds must be 1-300")
+            .ValidateOnStart();
+
+        services.AddHttpClient<ILocalChatModel, OllamaChatClient>((sp, client) =>
+            {
+                var s = sp.GetRequiredService<IOptions<OllamaSettings>>().Value;
+                client.BaseAddress = new Uri(s.BaseUrl.TrimEnd('/') + "/");
+                client.Timeout = TimeSpan.FromSeconds(s.TimeoutSeconds);
+                client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+            })
+            .SetHandlerLifetime(TimeSpan.FromMinutes(5));
 
         return services;
     }

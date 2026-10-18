@@ -11,6 +11,9 @@ obj/
 # These lines only catch data written here by mistake, e.g. a folder setting pointed inside.
 data/
 *.db
+
+# Candidate profile, decision policy, and scoring rubric. Local only.
+src/JobFetchProbe.Api/Fit/*.json
 *.db-journal
 *.db-wal
 *.db-shm
