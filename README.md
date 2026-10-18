@@ -212,6 +212,8 @@ Any setting can be overridden with an environment variable, using `__` for `:`, 
 
 ## Structure
 
+A picture of the whole thing, layers and one acquisition step by step: [`docs/architecture.svg`](docs/architecture.svg). The same acquisition as UML sequence diagrams: [`docs/sequence.md`](docs/sequence.md).
+
 ```text
 Console ──► Services (IAcquisitionService: step 1 → step 2) ──► Models
    │            ▲  ▲
@@ -251,6 +253,8 @@ The client is a **typed client** registered with `AddHttpClient<IPageFetcher, Ht
 - [`docs/plan.md`](docs/plan.md): goal, scope, boundary, design decisions, limitations.
 - [`docs/spec.md`](docs/spec.md): what the code implements, project by project.
 - [`docs/database.md`](docs/database.md): the tables and how they relate, with a diagram (`docs/database.svg`).
+- [`docs/sequence.md`](docs/sequence.md): UML sequence diagrams (Mermaid, editable as text) of an acquisition started from the API, and of following a run through the journal; rendered as `docs/acquisition-sequence.svg` and `docs/journal-sequence.svg`.
+- [`docs/architecture.svg`](docs/architecture.svg): how the processes interact — the layers and who calls whom, and one acquisition step by step, with the places that are not idempotent yet (backlog section 5).
 - [`docs/backlog.md`](docs/backlog.md): recommendations and open items kept for later.
 - [`CLAUDE.md`](CLAUDE.md): how changes are made in this repository (plan first, then "go") and the architecture rules.
 

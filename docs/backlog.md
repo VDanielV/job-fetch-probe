@@ -3,7 +3,7 @@
 Recommendations and open items, kept so they can be picked up later. Nothing here is implemented unless it says so.
 Each item follows the working agreement in `CLAUDE.md`: a plan first, changes only after "go".
 
-Updated: 16 Oct 2026 (evening).
+Updated: 16 Oct 2026 (night).
 
 ## 1. Move acquisition from the console app to the API (proposed 16 Oct 2026) — **done 16 Oct 2026, except the web button**
 
@@ -75,3 +75,30 @@ Small related bug seen in the log: the "time left" estimate is unreliable when t
 - From `plan.md`, "Possible next steps": a test project with fixtures; AngleSharp instead of regex parsing; `Posted` as a date; PostgreSQL in Docker.
 - Unused folders `pages` and `output` in the data folder; `197 .net jobs in Valencia.html` in `pages` could move to `input`.
 - Git: the tag `probe-v1` and removing the `archive` folder, if not done yet.
+
+## 5. Idempotency of starting an acquisition from the API (analysis of 16 Oct 2026)
+
+**Answer: only partly.** The data is safe to repeat; the start request is not.
+
+What is already idempotent (repeating it changes nothing, or nothing harmful):
+
+- **Step 2, per job.** A result is stored as soon as it is known; a job already read is never requested again; a gone job (404/410) is never tried again.
+- **Jobs in step 1.** Jobs are upserted by job ID, so a page read twice adds no duplicate job.
+- **Two starts at the same time.** While a run is going, a second `POST api/JobFetcher` gets `409`, and the console exits with 4.
+
+What is not:
+
+1. **No idempotency key.** A client that retries a `POST` (time-out, lost response, double click in the future web button) cannot say "this is the same request". While the run is going it gets `409`, so it cannot tell that its own request started it. After the run finished, the retry **starts a new acquisition**.
+2. **A retry right after a refusal asks the site again at once.** If a run stopped because the circuit breaker gave up (429s), a new `POST`, whether a retry or not, starts step 2 straight away with a fresh breaker. That breaks the "no quick retries" rule across runs (see section 3, item 1).
+3. **The response does not identify the acquisition.** It has no id and no run ids, only `Location: /api/Journal/runs`, so a client cannot follow *its* run or check on it instead of posting again.
+4. **Step 1 can store a page twice.** The listing is stored first and the pages archived after. If archiving fails (file locked) or the process dies in between, the page stays in `input`, and the next run stores it again as a new listing. The jobs are not duplicated, but the listing and its sources are.
+5. **A small race between the API and the console.** The check reads the journal and then starts, so two starts within the same second or two can both go ahead.
+
+Proposed plan (each part independent; plan first when picked up):
+
+- **A. An acquisition record, with an optional `Idempotency-Key`.** New table `Acquisitions` (Id, StartedBy, RequestedAt, IdempotencyKey, State, the two journal run ids, FinishedAt) and one migration. Starting inserts a row in one transaction. A partial unique index allows only one row whose state is Running, which closes the race in item 5 at the database level, for the API and the console alike. A `POST` with an `Idempotency-Key` header already seen within 24 hours returns the **same answer** (202 with the same acquisition), whatever happened since, without starting anything. Without the header, it behaves as today.
+- **B. Identify and follow the acquisition.** The 202 body carries `acquisitionId` and the journal run ids as they become known. `Location: /api/JobFetcher/{id}`, plus a new `GET api/JobFetcher/{id}` (state, steps, run ids, result). This is the status the web button needs.
+- **C. A quiet period after a refusal.** Before starting step 2, look at the last refusal (jobs `Blocked`, `LastAttemptAt`, already stored; this is section 3, item 1). Inside the cooldown, the API answers `429 Too Many Requests` with `Retry-After`, the console says when to try again, and nothing is sent to the site.
+- **D. Step 1: do not store the same page twice.** Store a SHA-256 of each page with its listing source (one column and a migration). A page whose hash is already stored is only archived, with the message "already stored in listing …".
+
+Suggested order: C (protects the site, small), then A + B together (the API contract and the web button), then D.

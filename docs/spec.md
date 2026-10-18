@@ -75,7 +75,8 @@ job-fetch-probe/
       Program.cs  appsettings.json  Properties/launchSettings.json  JobFetchProbe.Api.http
       Controllers/  JobFetcherController.cs  JobCatalogController.cs  JournalController.cs
       Handlers/     JobStoreUnavailableHandler.cs  JournalUnavailableHandler.cs
-  docs/      plan.md  spec.md  database.md  database.svg
+  docs/      plan.md  spec.md  backlog.md  database.md  database.svg  architecture.svg
+             sequence.md  acquisition-sequence.svg  journal-sequence.svg
 ```
 
 The repository holds code and documents only. Everything the app reads or writes is under `Paths:DataRoot`, a folder outside the repository, so Git commands (`git clean -fdx`, a fresh clone) never touch it:
