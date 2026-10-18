@@ -1,0 +1,32 @@
+@model JobFetchProbe.Web.Pages.AcquisitionView
+@{
+    var stepOne = Model.WholeRun.Where(a => a.Step == 1).ToList();
+    var stepTwo = Model.WholeRun.Where(a => a.Step == 2).ToList();
+}
+@if (Model.WholeRun.Count == 0)
+{
+    <p class="pp-empty muted">Nothing recorded yet.</p>
+}
+else
+{
+    <div class="wholerun">
+        <h3 class="sect">Step 1 · Job links</h3>
+        @if (stepOne.Count == 0)
+        {
+            <p class="pp-empty muted">No saved pages in the input folder.</p>
+        }
+        else
+        {
+            <partial name="_ActivityTable" model="stepOne" />
+        }
+        <h3 class="sect">Step 2 · Descriptions</h3>
+        @if (stepTwo.Count == 0)
+        {
+            <p class="pp-empty muted">Not started.</p>
+        }
+        else
+        {
+            <partial name="_ActivityTable" model="stepTwo" />
+        }
+    </div>
+}

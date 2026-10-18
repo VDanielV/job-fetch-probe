@@ -32,7 +32,14 @@ public sealed class AcquisitionView
     /// <summary>The acquisition's state as a whole: step 2's, or step 1's when step 2 never started.</summary>
     public JournalRunState? State { get; private init; }
 
+    /// <summary>The newest lines of both steps, newest first (<see cref="ActivityLines"/> of them).</summary>
     public IReadOnlyList<ActivityLine> Activity { get; private init; } = [];
+
+    /// <summary>Every line of both steps, oldest first: the whole run.</summary>
+    public IReadOnlyList<ActivityLine> WholeRun { get; private init; } = [];
+
+    /// <summary>How the acquisition failed, for the red pane; null unless it failed or was abandoned.</summary>
+    public PageError? Error { get; private init; }
 
     /// <summary>How the acquisition ended, once it has.</summary>
     public PageBanner? EndBanner { get; private init; }
@@ -90,6 +97,7 @@ public sealed class AcquisitionView
             state = listing.State;
         }
 
+        var whole = WholeRunOf(listing, details);
         PageBanner? end = notStarted;
         if (!running && !starting && state is { } final)
         {
@@ -104,10 +112,83 @@ public sealed class AcquisitionView
             IsRunning = running,
             ShowProgress = running || starting || since is not null,
             State = state,
-            Activity = ActivityOf(listing, details),
+            Activity = whole.AsEnumerable().Reverse().Take(ActivityLines).ToList(),
+            WholeRun = whole,
             EndBanner = end,
+            Error = ErrorOf(running || starting, state, listing, details),
             Now = now,
         };
+    }
+
+    /// <summary>The acquisition was started by the console app: the web page cannot stop it.</summary>
+    public bool StartedFromConsole
+    {
+        get
+        {
+            return Listing is not null && Listing.StartedBy == JournalStarter.Console;
+        }
+    }
+
+    /// <summary>Saved pages archived in step 1.</summary>
+    public int PagesArchived
+    {
+        get
+        {
+            if (Listing is null)
+            {
+                return 0;
+            }
+            return Listing.Entries.Count(e => e.Outcome == JobListingJournalOutcome.Archived);
+        }
+    }
+
+    /// <summary>The pages step 1 kept in the input folder, with the reason for each.</summary>
+    public IReadOnlyList<JobListingJournalEntry> KeptPages
+    {
+        get
+        {
+            if (Listing is null)
+            {
+                return [];
+            }
+            return Listing.Entries.Where(e => e.Outcome == JobListingJournalOutcome.Kept).ToList();
+        }
+    }
+
+    /// <summary>Why the acquisition stopped early, in a few words; null unless it was stopped.</summary>
+    public string? StopReason
+    {
+        get
+        {
+            if (State != JournalRunState.Stopped)
+            {
+                return null;
+            }
+            if (Details is null)
+            {
+                return "during step 1; nothing was stored and the pages stay in the input folder";
+            }
+            var stopped = Details.Entries.LastOrDefault(e => e.Kind == JobDetailsJournalEntryKind.Stopped);
+            if (stopped?.Message is { Length: > 0 } reason)
+            {
+                return reason;
+            }
+            return Details.Message;
+        }
+    }
+
+    /// <summary>Step 2's time from its start to its end (or to now while it runs), cooldowns included.</summary>
+    public TimeSpan? Step2Duration
+    {
+        get
+        {
+            if (Details is null)
+            {
+                return null;
+            }
+            var end = Details.FinishedAt ?? Now;
+            return end - Details.StartedAt;
+        }
     }
 
     /// <summary>When the acquisition started (step 1's start).</summary>
@@ -271,7 +352,7 @@ public sealed class AcquisitionView
         return $"{Math.Max(0, (int)Math.Ceiling(t.TotalSeconds))}s";
     }
 
-    private static PageBanner EndOf(JournalRunState state, JobListingJournalRun? listing, JobDetailsJournalRun? details)
+    private static PageBanner? EndOf(JournalRunState state, JobListingJournalRun? listing, JobDetailsJournalRun? details)
     {
         var message = details?.Message ?? listing?.Message ?? string.Empty;
         switch (state)
@@ -279,21 +360,44 @@ public sealed class AcquisitionView
             case JournalRunState.Completed:
                 return new PageBanner("ok", "Every job in the list was tried.", message);
             case JournalRunState.Stopped:
-                if (details is not null && details.StopAfterOpenings > 0 && details.Openings >= details.StopAfterOpenings)
+                if (details is null)
+                {
+                    return new PageBanner("busy", "Stopped during step 1.", "Nothing was stored; every saved page stays in the input folder for the next run.");
+                }
+                if (details.StopAfterOpenings > 0 && details.Openings >= details.StopAfterOpenings)
                 {
                     return new PageBanner("busy", $"Stopped: the circuit breaker opened {details.Openings} time(s).",
                         "LinkedIn refused the requests. The jobs left are tried on the next run; wait an hour or more before starting again. " + message);
                 }
                 return new PageBanner("busy", "Stopped before the end of the list.", message);
-            case JournalRunState.Failed:
-                return new PageBanner("error", "The acquisition failed.", message);
             default:
-                return new PageBanner("error", "The process ended without finishing the acquisition.", message);
+                return null; // Failed and Abandoned: the red error pane says what happened
         }
     }
 
-    /// <summary>The newest entries of both steps, newest first.</summary>
-    private static IReadOnlyList<ActivityLine> ActivityOf(JobListingJournalRun? listing, JobDetailsJournalRun? details)
+    private static PageError? ErrorOf(bool active, JournalRunState? state, JobListingJournalRun? listing, JobDetailsJournalRun? details)
+    {
+        if (active)
+        {
+            return null;
+        }
+        if (state == JournalRunState.Abandoned)
+        {
+            return PageError.Abandoned(details?.Message ?? listing?.Message);
+        }
+        if (state != JournalRunState.Failed)
+        {
+            return null;
+        }
+        if (details is not null && details.State == JournalRunState.Failed)
+        {
+            return PageError.From(details.ErrorType, details.Message);
+        }
+        return PageError.From(listing?.ErrorType, listing?.Message);
+    }
+
+    /// <summary>Every entry of both steps, oldest first (step 1's before step 2's).</summary>
+    private static IReadOnlyList<ActivityLine> WholeRunOf(JobListingJournalRun? listing, JobDetailsJournalRun? details)
     {
         var lines = new List<ActivityLine>();
         if (listing is not null)
@@ -311,7 +415,7 @@ public sealed class AcquisitionView
             }
         }
         // Step 2 entries come after step 1's; within a step, ids grow in order.
-        return lines.OrderByDescending(l => l.At).ThenByDescending(l => l.Order).Take(ActivityLines).ToList();
+        return lines.OrderBy(l => l.Step).ThenBy(l => l.Order).ToList();
     }
 
     private static ActivityLine ListingLine(JobListingJournalEntry e)
@@ -319,13 +423,13 @@ public sealed class AcquisitionView
         switch (e.Outcome)
         {
             case JobListingJournalOutcome.Read:
-                return new ActivityLine(e.Id, e.At, "Page read", "Read", e.File, $"{e.Jobs} jobs, {e.NewJobs} new");
+                return new ActivityLine(1, e.Id, e.At, "Page read", "Read", e.File, $"{e.Jobs} jobs, {e.NewJobs} new");
             case JobListingJournalOutcome.Kept:
-                return new ActivityLine(e.Id, e.At, "Page kept", "Failed", e.File, e.Message);
+                return new ActivityLine(1, e.Id, e.At, "Page kept", "Failed", e.File, e.Message);
             case JobListingJournalOutcome.Archived:
-                return new ActivityLine(e.Id, e.At, "Archived", "Gone", e.File, "moved to input\\archived");
+                return new ActivityLine(1, e.Id, e.At, "Archived", "Gone", e.File, "moved to input\\archived");
             default:
-                return new ActivityLine(e.Id, e.At, "Not archived", "Blocked", e.File, e.Message);
+                return new ActivityLine(1, e.Id, e.At, "Not archived", "Blocked", e.File, e.Message);
         }
     }
 
@@ -337,34 +441,34 @@ public sealed class AcquisitionView
             case JobDetailsJournalEntryKind.Job:
                 if (e.Status == JobResultStatus.Read)
                 {
-                    return new ActivityLine(order, e.At, "Read", "Read", e.JobId, e.Title);
+                    return new ActivityLine(2, order, e.At, "Read", "Read", e.JobId, e.Title);
                 }
                 if (e.Status == JobResultStatus.Blocked)
                 {
-                    return new ActivityLine(order, e.At, "Refused", "Blocked", e.JobId, e.Message);
+                    return new ActivityLine(2, order, e.At, "Refused", "Blocked", e.JobId, e.Message);
                 }
                 if (e.Gone)
                 {
-                    return new ActivityLine(order, e.At, "Gone", "Gone", e.JobId, "the job page no longer exists");
+                    return new ActivityLine(2, order, e.At, "Gone", "Gone", e.JobId, "the job page no longer exists");
                 }
-                return new ActivityLine(order, e.At, "Failed", "Failed", e.JobId, e.Message);
+                return new ActivityLine(2, order, e.At, "Failed", "Failed", e.JobId, e.Message);
             case JobDetailsJournalEntryKind.CircuitOpened:
                 var wait = string.Empty;
                 if (e.WaitSeconds is { } seconds)
                 {
                     wait = $" · waits {Duration(TimeSpan.FromSeconds(seconds))}";
                 }
-                return new ActivityLine(order, e.At, "Circuit open", "Blocked", null, e.Message + wait);
+                return new ActivityLine(2, order, e.At, "Circuit open", "Blocked", null, e.Message + wait);
             case JobDetailsJournalEntryKind.CircuitHalfOpen:
-                return new ActivityLine(order, e.At, "Trial", "Pending", null, "one trial request");
+                return new ActivityLine(2, order, e.At, "Trial", "Pending", null, "one trial request");
             case JobDetailsJournalEntryKind.CircuitClosed:
-                return new ActivityLine(order, e.At, "Circuit closed", "Read", null, "back to the normal pace");
+                return new ActivityLine(2, order, e.At, "Circuit closed", "Read", null, "back to the normal pace");
             case JobDetailsJournalEntryKind.Started:
-                return new ActivityLine(order, e.At, "Step 2", "Pending", null, e.Message);
+                return new ActivityLine(2, order, e.At, "Step 2", "Pending", null, e.Message);
             case JobDetailsJournalEntryKind.Stopped:
-                return new ActivityLine(order, e.At, "Stopped", "Blocked", null, e.Message);
+                return new ActivityLine(2, order, e.At, "Stopped", "Blocked", null, e.Message);
             default:
-                return new ActivityLine(order, e.At, "Finished", "Read", null, e.Message);
+                return new ActivityLine(2, order, e.At, "Finished", "Read", null, e.Message);
         }
     }
 }

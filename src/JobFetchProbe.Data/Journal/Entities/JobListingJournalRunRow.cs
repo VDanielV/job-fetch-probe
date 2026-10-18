@@ -16,5 +16,6 @@ public sealed class JobListingJournalRunRow
     public int NewJobs { get; set; }
     public string? ListingId { get; set; }
     public string? Message { get; set; }
+    public string? ErrorType { get; set; }
     public List<JobListingJournalEntryRow> Entries { get; set; } = [];
 }

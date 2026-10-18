@@ -23,9 +23,15 @@ public sealed class AcquisitionService(IServiceScopeFactory scopes, IJournalServ
     public async Task<AcquisitionResult> RunAsync(JournalStarter startedBy, IAcquisitionObserver observer, CancellationToken ct = default)
     {
         var jobListing = await FetchJobListingAsync(startedBy, observer, ct);
-        var jobDetails = await FetchJobDetailsAsync(startedBy, observer, ct);
+        var jobListingComplete = !jobListing.Stopped && jobListing.Files.All(f => f.Success && f.ArchivedTo is not null);
 
-        var jobListingComplete = jobListing.Files.All(f => f.Success && f.ArchivedTo is not null);
+        // Stopped during step 1 (or right after it): step 2 does not start.
+        if (jobListing.Stopped || ct.IsCancellationRequested)
+        {
+            return new AcquisitionResult(jobListing, null, jobListingComplete, false);
+        }
+
+        var jobDetails = await FetchJobDetailsAsync(startedBy, observer, ct);
         return new AcquisitionResult(jobListing, jobDetails, jobListingComplete, jobListingComplete && jobDetails.StillUnread == 0);
     }
 

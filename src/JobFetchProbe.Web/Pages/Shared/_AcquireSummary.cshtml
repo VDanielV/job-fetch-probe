@@ -1,0 +1,123 @@
+@model JobFetchProbe.Web.Pages.AcquisitionView
+@using JobFetchProbe.Models.Journal
+@{
+    var v = Model;
+    var l = v.Listing;
+    var d = v.Details;
+    var busy = v.IsRunning || v.IsStarting;
+}
+<div class="summary-pane">
+    @if (busy)
+    {
+        <p class="muted summary-note">So far: the summary is final when the acquisition ends.</p>
+    }
+    <dl class="summary-list">
+        <div>
+            <dt>Input pages</dt>
+            <dd>
+                @if (l is null)
+                {
+                    <span>—</span>
+                }
+                else if (l.Pages == 0 && l.State == JournalRunState.Completed)
+                {
+                    <span>none</span>
+                }
+                else
+                {
+                    <span>@l.Pages found, @v.PagesArchived read and archived, @l.PagesKept kept in the input folder</span>
+                    @if (v.KeptPages.Count > 0)
+                    {
+                        <ul class="kept">
+                            @foreach (var k in v.KeptPages)
+                            {
+                                <li><b>@k.File</b>: @k.Message</li>
+                            }
+                        </ul>
+                    }
+                }
+            </dd>
+        </div>
+        <div>
+            <dt>Job links</dt>
+            <dd>
+                @if (l is null)
+                {
+                    <span>—</span>
+                }
+                else if (l.ListingId is not null)
+                {
+                    <span>@l.JobsStored stored as listing @l.ListingId (@l.NewJobs new)</span>
+                }
+                else if (l.State == JournalRunState.Stopped)
+                {
+                    <span>none stored: stopped during step 1</span>
+                }
+                else if (l.Pages == 0)
+                {
+                    <span>none (no saved pages)</span>
+                }
+                else
+                {
+                    <span>none stored (no page could be read)</span>
+                }
+            </dd>
+        </div>
+        <div>
+            <dt>Descriptions</dt>
+            <dd>
+                @if (d is null)
+                {
+                    if (busy)
+                    {
+                        <span>step 2 has not started yet</span>
+                    }
+                    else
+                    {
+                        <span>not read: step 2 did not start</span>
+                    }
+                }
+                else
+                {
+                    <span>@d.Fetched read in this run, @d.Failed failed, @d.ToRead not tried</span>
+                    @if (d.TotalRead is { } total && d.StillUnread is { } still)
+                    {
+                        <span class="sub">@total stored in total; @still still to read (tried again on the next run)</span>
+                    }
+                }
+            </dd>
+        </div>
+        @if (d is not null)
+        {
+            <div>
+                <dt>Requests</dt>
+                <dd>@d.Requests sent in @AcquisitionView.Duration(v.Step2Duration ?? TimeSpan.Zero), circuit breaker opened @d.Openings time(s)</dd>
+            </div>
+        }
+        <div>
+            <dt>Result</dt>
+            <dd>
+                @if (busy)
+                {
+                    <span>running…</span>
+                }
+                else if (v.State == JournalRunState.Completed && d is not null && d.StillUnread == 0 && l is not null && l.PagesKept == 0)
+                {
+                    <span>complete: every job has its description</span>
+                }
+                else if (v.State == JournalRunState.Completed)
+                {
+                    <span>completed; something is left for the next run</span>
+                }
+                else if (v.State == JournalRunState.Stopped)
+                {
+                    <span>stopped early: @v.StopReason</span>
+                }
+                else
+                {
+                    <span>@v.StateText: see the error below</span>
+                }
+            </dd>
+        </div>
+    </dl>
+</div>

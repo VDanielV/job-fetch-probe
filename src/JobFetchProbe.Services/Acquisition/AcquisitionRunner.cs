@@ -19,6 +19,7 @@ public sealed class AcquisitionRunner(
     private readonly CancellationTokenSource stopping = new();
     private readonly ILogger logger = loggers.CreateLogger<AcquisitionRunner>();
     private Task? current;
+    private CancellationTokenSource? currentStop;
 
     public async Task<AcquisitionStart> TryStartAsync(JournalStarter startedBy, CancellationToken ct = default)
     {
@@ -42,8 +43,45 @@ public sealed class AcquisitionRunner(
                     "A run that ended without finishing counts as running until it has shown no sign of life for 2 minutes.");
             }
 
-            current = Task.Run(() => RunAsync(startedBy));
+            // The run stops when it is asked to (TryStopAsync), or when the application stops.
+            currentStop?.Dispose();
+            currentStop = CancellationTokenSource.CreateLinkedTokenSource(stopping.Token);
+            var token = currentStop.Token;
+            current = Task.Run(() => RunAsync(startedBy, token));
             return Answer(AcquisitionStartState.Started, "Acquisition started: step 1, then step 2. Follow it in the journal.");
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    public async Task<AcquisitionStop> TryStopAsync(CancellationToken ct = default)
+    {
+        await gate.WaitAsync(ct);
+        try
+        {
+            if (current is not { IsCompleted: false } || currentStop is null)
+            {
+                if (await acquisition.IsRunningAsync(ct))
+                {
+                    return new AcquisitionStop(
+                        AcquisitionStopState.NotRunning,
+                        time.GetLocalNow(),
+                        "The running acquisition was started by the console app; stop it there with Ctrl+C.");
+                }
+                return new AcquisitionStop(AcquisitionStopState.NotRunning, time.GetLocalNow(), "No acquisition is running.");
+            }
+
+            if (!currentStop.IsCancellationRequested)
+            {
+                logger.LogWarning("Stop requested: the acquisition stops after the current page or job.");
+                await currentStop.CancelAsync();
+            }
+            return new AcquisitionStop(
+                AcquisitionStopState.Stopping,
+                time.GetLocalNow(),
+                "The acquisition stops after the current page or job (at once during a pause or a cooldown).");
         }
         finally
         {
@@ -69,17 +107,22 @@ public sealed class AcquisitionRunner(
 
     public void Dispose()
     {
+        currentStop?.Dispose();
         stopping.Dispose();
         gate.Dispose();
     }
 
-    private async Task RunAsync(JournalStarter startedBy)
+    private async Task RunAsync(JournalStarter startedBy, CancellationToken token)
     {
         var observer = new LoggingAcquisitionObserver(loggers.CreateLogger<LoggingAcquisitionObserver>());
         try
         {
-            var result = await acquisition.RunAsync(startedBy, observer, stopping.Token);
-            if (result.NothingLeft)
+            var result = await acquisition.RunAsync(startedBy, observer, token);
+            if (result.JobDetails is null)
+            {
+                logger.LogInformation("Acquisition stopped during step 1: nothing stored, the pages stay in the input folder.");
+            }
+            else if (result.NothingLeft)
             {
                 logger.LogInformation("Acquisition finished: nothing left to do.");
             }

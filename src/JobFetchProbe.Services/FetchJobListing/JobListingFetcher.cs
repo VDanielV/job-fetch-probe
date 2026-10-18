@@ -38,11 +38,24 @@ public sealed class JobListingFetcher(
 
         for (var n = 0; n < pending.Count; n++)
         {
-            ct.ThrowIfCancellationRequested();
+            // A stop request ends the step between two pages: nothing is stored and no page is archived, so every
+            // page stays in the input folder for the next run.
+            if (ct.IsCancellationRequested)
+            {
+                return new JobListingFetchResult(files, null, null, Stopped: true);
+            }
             var path = pending[n];
             var name = Path.GetFileName(path);
             progress?.Report(new JobListingFetchProgress(n + 1, pending.Count, name, null));
-            var read = await search.ReadFileAsync(path, ct);
+            SearchResult read;
+            try
+            {
+                read = await search.ReadFileAsync(path, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return new JobListingFetchResult(files, null, null, Stopped: true);
+            }
 
             if (read.Status != JobResultStatus.Read || read.Search is null)
             {
@@ -81,7 +94,13 @@ public sealed class JobListingFetcher(
             Jobs = jobs,
         };
 
-        var listingId = await repository.SaveAsync(batch, ct);
+        if (ct.IsCancellationRequested)
+        {
+            return new JobListingFetchResult(files, null, null, Stopped: true);
+        }
+
+        // From here the step completes: the listing is stored in one transaction and the pages are archived.
+        var listingId = await repository.SaveAsync(batch, CancellationToken.None);
 
         foreach (var (path, index) in readPaths)
         {

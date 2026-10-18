@@ -99,9 +99,18 @@ sequenceDiagram
         Acq-->>Run: AcquisitionResult (written to the API log)
     end
 
+    opt the Stop button is pressed (while a web-started acquisition runs)
+        Client->>Ctl: POST api/JobFetcher/stop
+        Ctl->>Run: TryStopAsync()
+        Run->>Acq: cancel this run's token
+        Run-->>Ctl: AcquisitionStop(Stopping)
+        Ctl-->>Client: 202 Accepted
+        Note over Acq,S2: step 1 stops between pages (nothing stored, pages stay in input/), step 2 after the current job, at once in a cooldown, the run ends Stopped
+    end
+
     opt the API is stopping
         Run->>Acq: cancel the token, wait for the run
-        Note over Run,S2: step 2 stops after the current job, the run ends Stopped
+        Note over Run,S2: the same as the Stop button, then the API exits
     end
 ```
 

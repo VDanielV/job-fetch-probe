@@ -15,7 +15,7 @@ public sealed class JournalClient(HttpClient http) : IJournalClient
         {
             return []; // no database yet, so no journal
         }
-        response.EnsureSuccessStatusCode();
+        await ApiCall.EnsureSuccessAsync(response, ct);
         var runs = await response.Content.ReadFromJsonAsync<List<JournalRunSummary>>(ApiJson.Options, ct);
         if (runs is null)
         {
@@ -41,7 +41,7 @@ public sealed class JournalClient(HttpClient http) : IJournalClient
         {
             return null;
         }
-        response.EnsureSuccessStatusCode();
+        await ApiCall.EnsureSuccessAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<T>(ApiJson.Options, ct);
     }
 }

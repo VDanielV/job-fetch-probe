@@ -16,7 +16,7 @@ public sealed class JobCatalogClient(HttpClient http) : IJobCatalogClient
     {
         using var response = await SendAsync($"{Route}?page={page}&pageSize={pageSize}", ct);
         await ThrowIfUnavailableAsync(response, ct);
-        response.EnsureSuccessStatusCode();
+        await ApiCall.EnsureSuccessAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<JobSummaryPage>(ct)
             ?? throw new InvalidOperationException("The API returned an empty page.");
     }
@@ -29,7 +29,7 @@ public sealed class JobCatalogClient(HttpClient http) : IJobCatalogClient
             return null;
         }
         await ThrowIfUnavailableAsync(response, ct);
-        response.EnsureSuccessStatusCode();
+        await ApiCall.EnsureSuccessAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<StoredJob>(ct);
     }
 

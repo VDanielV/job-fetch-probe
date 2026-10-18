@@ -31,5 +31,9 @@ Accept: application/json
 POST {{api}}/api/JobFetcher
 Accept: application/json
 
+### Stop the acquisition started by the API (202 Accepted; 409 Conflict if none is running here)
+POST {{api}}/api/JobFetcher/stop
+Accept: application/json
+
 ### The API description (Development only)
 GET {{api}}/openapi/v1.json

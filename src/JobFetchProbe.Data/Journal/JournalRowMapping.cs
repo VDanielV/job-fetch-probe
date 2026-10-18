@@ -21,6 +21,7 @@ internal static class JournalRowMapping
         row.NewJobs = run.NewJobs;
         row.ListingId = run.ListingId;
         row.Message = run.Message;
+        row.ErrorType = run.ErrorType;
     }
 
     public static void CopyTo(this JobDetailsJournalRun run, JobDetailsJournalRunRow row)
@@ -41,6 +42,9 @@ internal static class JournalRowMapping
         row.StopAfterOpenings = run.StopAfterOpenings;
         row.EtaSeconds = run.EtaSeconds;
         row.Message = run.Message;
+        row.StillUnread = run.StillUnread;
+        row.TotalRead = run.TotalRead;
+        row.ErrorType = run.ErrorType;
     }
 
     public static JobListingJournalEntryRow ToRow(this JobListingJournalEntry entry, long runId) => new()
@@ -86,6 +90,7 @@ internal static class JournalRowMapping
         NewJobs = row.NewJobs,
         ListingId = row.ListingId,
         Message = row.Message,
+        ErrorType = row.ErrorType,
         Entries = entries
             .Select(e => new JobListingJournalEntry(e.Id, e.At, e.Index, e.Total, e.File, Parse<JobListingJournalOutcome>(e.Outcome), e.Jobs, e.NewJobs, e.Message))
             .ToList(),
@@ -110,6 +115,9 @@ internal static class JournalRowMapping
         StopAfterOpenings = row.StopAfterOpenings,
         EtaSeconds = row.EtaSeconds,
         Message = row.Message,
+        StillUnread = row.StillUnread,
+        TotalRead = row.TotalRead,
+        ErrorType = row.ErrorType,
         Entries = entries
             .Select(e => new JobDetailsJournalEntry(
                 e.Id, e.At, Parse<JobDetailsJournalEntryKind>(e.Kind), e.Index, e.Total, e.JobId, e.Title,

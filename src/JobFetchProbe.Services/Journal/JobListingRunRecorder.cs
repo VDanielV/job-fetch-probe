@@ -99,11 +99,16 @@ internal sealed class JobListingRunRecorder : IJobListingRunRecorder
                 }
             }
 
+            var ended = JournalRunState.Completed;
+            if (result.Stopped)
+            {
+                ended = JournalRunState.Stopped;
+            }
             Run = Run with
             {
                 LastSeenAt = now,
                 FinishedAt = now,
-                State = JournalRunState.Completed,
+                State = ended,
                 Pages = result.Files.Count,
                 JobsStored = result.Batch?.Count ?? 0,
                 NewJobs = result.Files.Sum(f => f.NewJobs),
@@ -125,6 +130,7 @@ internal sealed class JobListingRunRecorder : IJobListingRunRecorder
                 FinishedAt = now,
                 State = JournalRunState.Failed,
                 Message = error.GetBaseException().Message,
+                ErrorType = error.GetBaseException().GetType().FullName,
             };
             core.Save(null);
         });
@@ -142,6 +148,10 @@ internal sealed class JobListingRunRecorder : IJobListingRunRecorder
 
     private static string Summary(JobListingFetchResult result)
     {
+        if (result.Stopped)
+        {
+            return "Stopped before the end: nothing stored, every page stays in the input folder.";
+        }
         if (result.Files.Count == 0)
         {
             return "No saved pages in the input folder. Nothing new to add.";

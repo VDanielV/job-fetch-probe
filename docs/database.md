@@ -1,6 +1,6 @@
 # Database design
 
-`jobs.db` (SQLite), created and migrated by the console app through EF Core. The tables are defined in `src/JobFetchProbe.Data` (`Entities/` and `Configurations/` for jobs and listings, `Journal/Entities/` and `Journal/Configurations/` for the journal; one class each per table). This page describes the model after the migration `AddJournal`.
+`jobs.db` (SQLite), created and migrated by the console app or the API (at start-up) through EF Core. The tables are defined in `src/JobFetchProbe.Data` (`Entities/` and `Configurations/` for jobs and listings, `Journal/Entities/` and `Journal/Configurations/` for the journal; one class each per table). This page describes the model after the migration `AddJournalSummary`.
 
 ![Tables of jobs.db and how they relate](database.svg)
 
@@ -15,6 +15,7 @@
   - `JobListingJournalRuns` / `JobListingJournalEntries`: step 1 (FetchJobListing) runs, and per page what happened (read, kept, archived).
   - `JobDetailsJournalRuns` / `JobDetailsJournalEntries`: step 2 (FetchJobDetails) runs, and per job and per circuit breaker change what happened.
 
+  Migration `AddJournalSummary` (18 Oct 2026) adds what the web page's summary and error pane need: `StillUnread` and `TotalRead` on step 2 runs (set when the run ends), and `ErrorType` on both (the type of the error when a run fails, for example `Microsoft.Data.Sqlite.SqliteException`; its text is in `Message`).
   The *run* row is where the run stands now (state, counters, circuit breaker, last sign of life); the *entries* are what happened, in order. A reader asks for a run with the entries after the last id it has, and stops when the state is no longer `Running`. The journal is not linked to the other tables by keys (`ListingId` is informational), so it can be pruned freely.
 
 ## Relationships
@@ -113,6 +114,7 @@ erDiagram
         INTEGER NewJobs
         TEXT ListingId "nullable"
         TEXT Message "nullable"
+        TEXT ErrorType "nullable, when Failed"
     }
     JobListingJournalEntries {
         INTEGER Id PK
@@ -144,6 +146,9 @@ erDiagram
         INTEGER StopAfterOpenings
         INTEGER EtaSeconds "nullable"
         TEXT Message "nullable"
+        INTEGER StillUnread "nullable, at the end"
+        INTEGER TotalRead "nullable, at the end"
+        TEXT ErrorType "nullable, when Failed"
     }
     JobDetailsJournalEntries {
         INTEGER Id PK

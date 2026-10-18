@@ -1,0 +1,88 @@
+@model JobFetchProbe.Web.Pages.AcquisitionView
+@using JobFetchProbe.Models.Journal
+@{
+    var v = Model;
+    var busy = v.IsRunning || v.IsStarting;
+}
+<div class="pp-step">
+    <h3>Step 1 · Job links<small>saved pages</small></h3>
+    <div>
+        @if (v.Listing is not { } l)
+        {
+            <span class="muted">Waiting to start…</span>
+        }
+        else
+        {
+            <span class="status @l.State">@l.State</span>
+            <div class="facts-inline">
+                @if (l.Pages == 0 && l.State == JournalRunState.Completed)
+                {
+                    <span>No saved pages in the input folder: nothing new to add.</span>
+                }
+                else
+                {
+                    <span>@l.PagesRead page(s) read, @l.PagesKept kept</span>
+                    <span>@l.JobsStored job links stored, @l.NewJobs new</span>
+                    @if (l.ListingId is not null)
+                    {
+                        <span class="muted">listing @l.ListingId</span>
+                    }
+                }
+            </div>
+        }
+    </div>
+</div>
+
+<div class="pp-step">
+    <h3>Step 2 · Descriptions<small>one at a time</small></h3>
+    <div>
+        @if (v.Details is not { } d)
+        {
+            if (busy)
+            {
+                <span class="muted">Waits for step 1.</span>
+            }
+            else
+            {
+                <span class="muted">Not started.</span>
+            }
+        }
+        else if (d.Total == 0)
+        {
+            <span class="status @d.State">@d.State</span>
+            <div class="facts-inline"><span>Every job already has its description: nothing to read.</span></div>
+        }
+        else
+        {
+            <div class="facts-inline">
+                @if (busy)
+                {
+                    <b>Job @v.JobsDone of @d.Total</b>
+                }
+                else
+                {
+                    <b>@v.JobsDone of @d.Total tried</b>
+                }
+                <span>ok @d.Fetched · failed @d.Failed</span>
+                @if (!busy && d.ToRead > 0)
+                {
+                    <span>@d.ToRead not tried</span>
+                }
+                @if (busy && d.EtaSeconds is { } eta)
+                {
+                    <span>~@AcquisitionView.Duration(TimeSpan.FromSeconds(eta)) left</span>
+                }
+                <span class="chip2 @(d.CircuitState == JournalCircuitState.Closed ? "closed" : "open")">● @v.CircuitText</span>
+            </div>
+            <div class="bar" role="progressbar" aria-valuenow="@v.Percent" aria-valuemin="0" aria-valuemax="100"><span style="width:@(v.Percent)%"></span></div>
+        }
+    </div>
+</div>
+
+@if (v.Activity.Count > 0)
+{
+    <div class="activity">
+        <p class="small-label">Recent activity</p>
+        <partial name="_ActivityTable" model="v.Activity" />
+    </div>
+}

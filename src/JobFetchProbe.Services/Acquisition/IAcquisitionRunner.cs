@@ -15,4 +15,11 @@ public interface IAcquisitionRunner
     /// </summary>
     /// <param name="startedBy">Who asked, as shown in the journal.</param>
     Task<AcquisitionStart> TryStartAsync(JournalStarter startedBy, CancellationToken ct = default);
+
+    /// <summary>
+    /// Asks the acquisition started here to stop: during step 1 between two pages (nothing is stored, the pages stay
+    /// in the input folder; step 2 does not start), during step 2 after the current job, and at once during a pause or
+    /// a cooldown. The run then ends Stopped. An acquisition started by the console app cannot be stopped from here.
+    /// </summary>
+    Task<AcquisitionStop> TryStopAsync(CancellationToken ct = default);
 }

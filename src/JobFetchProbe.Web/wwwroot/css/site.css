@@ -286,7 +286,8 @@ code { font-family: Consolas, "SF Mono", Menlo, monospace; font-size: .85em; bac
 .chip2 { display: inline-flex; align-items: center; gap: .3rem; padding: .05rem .5rem; border-radius: 6px; font-size: .75rem; font-weight: 600; }
 .chip2.closed { background: #ecfdf3; color: #15803d; } .chip2.open { background: #fff7ed; color: #c2410c; }
 .activity { padding: .6rem 1.25rem 1rem; }
-.activity table { font-size: .82rem; } .activity td, .activity th { padding: .35rem .5rem; } .activity tbody tr { cursor: default; }
+table.log { font-size: .82rem; } table.log td { padding: .35rem .5rem; } table.log tbody tr { cursor: default; }
+table.log tbody tr:hover { background: transparent; }
 .pp-foot { display: flex; gap: 1rem; align-items: center; padding: .8rem 1.25rem; background: #f9fafb; color: var(--muted); font-size: .85rem; }
 .howto { font-size: .85rem; } .howto summary { cursor: pointer; color: var(--accent-strong); font-weight: 600; }
 
@@ -299,11 +300,48 @@ code { font-family: Consolas, "SF Mono", Menlo, monospace; font-size: .85em; bac
 .status.Completed { background: #ecfdf3; color: #15803d; }
 .status.Stopped { background: #fff7ed; color: #c2410c; }
 .status.Abandoned { background: #f3f4f6; color: #6b7280; }
+.launch-buttons { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.launch-buttons form { margin: 0; }
+.stop { display: inline-flex; align-items: center; gap: .5rem; padding: .78rem 1.3rem; border-radius: 999px; cursor: pointer; font: inherit; font-weight: 700; color: #b91c1c; background: #fff; border: 2px solid #fca5a5; transition: background .12s, border-color .12s; }
+.stop:hover { background: #fef2f2; border-color: #ef4444; }
+.stop:focus-visible { outline: 3px solid #fecaca; outline-offset: 3px; }
+.stop svg { width: 16px; height: 16px; fill: currentColor; }
+.stop[disabled] { cursor: not-allowed; color: #9ca3af; border-color: #e5e7eb; background: #f9fafb; }
+
+/* the pane's tabs: plain links, the page reloads on the chosen tab */
+.tabs { display: flex; gap: .25rem; padding: 0 1.25rem; border-bottom: 1px solid var(--line); }
+.tabs a { padding: .65rem .9rem; font-size: .88rem; font-weight: 600; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tabs a:hover { color: var(--text); }
+.tabs a.on { color: var(--accent-strong); border-bottom-color: var(--accent); }
+
+.wholerun { padding: .25rem 1.25rem 1rem; }
+.wholerun h3.sect { margin: .9rem 0 .2rem; font-size: .75rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.pp-empty { margin: 0; padding: .9rem 1.25rem; font-size: .88rem; }
+.wholerun .pp-empty { padding: .3rem 0; }
+
+.summary-pane { padding: .4rem 1.25rem 1rem; }
+.summary-note { margin: .4rem 0 0; font-size: .82rem; }
+.summary-list { margin: 0; }
+.summary-list div { display: grid; grid-template-columns: 9.5rem 1fr; gap: 1rem; padding: .6rem 0; border-bottom: 1px solid var(--line); font-size: .9rem; }
+.summary-list div:last-child { border-bottom: 0; }
+.summary-list dt { color: var(--muted); font-weight: 600; }
+.summary-list dd { margin: 0; }
+.summary-list .sub { display: block; color: var(--muted); font-size: .85rem; margin-top: .15rem; }
+.kept { margin: .35rem 0 0; padding-left: 1.1rem; color: #7f1d1d; font-size: .85rem; }
+
+/* the red pane at the end: configuration, database, file or other errors */
+.error-pane { background: #fef2f2; border: 1px solid #fecaca; border-left: 5px solid #dc2626; border-radius: var(--radius); padding: 1rem 1.25rem; color: #7f1d1d; }
+.error-pane h2 { margin: 0 0 .35rem; font-size: 1.02rem; color: #991b1b; display: flex; gap: .5rem; align-items: center; }
+.error-pane p { margin: 0 0 .5rem; font-size: .9rem; }
+.error-message { margin: 0 0 .5rem; padding: .6rem .8rem; background: #fff; border: 1px solid #fecaca; border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; font-family: Consolas, "SF Mono", Menlo, monospace; font-size: .82rem; color: #450a0a; }
+.error-type { font-size: .8rem; margin: 0; }
+.error-type code { background: #fee2e2; }
+
 @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } .start { transition: none; } }
 @media (max-width: 900px) {
     .flow { grid-template-columns: 1fr; }
     .launch { flex-direction: column; align-items: flex-start; }
-    .pp-step { grid-template-columns: 1fr; gap: .4rem; }
+    .pp-step, .summary-list div { grid-template-columns: 1fr; gap: .4rem; }
 }
 
 /* ---------- Narrow screens: the details pane covers the table ---------- */

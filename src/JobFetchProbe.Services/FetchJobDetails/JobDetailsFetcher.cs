@@ -47,6 +47,11 @@ public sealed class JobDetailsFetcher(
 
         for (var i = 0; i < unread.Count && run.Stopped is null; i++)
         {
+            if (ct.IsCancellationRequested)
+            {
+                run.Stopped = JobDetailsFetchState.CancelledReason;
+                break;
+            }
             var job = unread[i];
             if (!await WaitForCircuitAsync(run, ct) || !await PauseBeforeRequestAsync(run, delay, ct))
             {

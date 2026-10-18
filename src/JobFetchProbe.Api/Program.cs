@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 
 // RESTful API over the jobs database. It reads the stored jobs and the journal, and can start an acquisition.
 //   POST api/JobFetcher                      starts an acquisition in the background (202), or 409 if one is running
+//   POST api/JobFetcher/stop                 stops the acquisition started here (202), or 409 if there is none
 //   GET api/JobCatalog?page=1&pageSize=25   one page of jobs (JobSummaryPage)
 //   GET api/JobCatalog/{jobId}               one job with its details and description (StoredJob)
 //   GET api/Journal/runs?take=10             recent runs of both steps (journal)
@@ -27,6 +28,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<JobStoreUnavailableHandler>();
 builder.Services.AddExceptionHandler<JournalUnavailableHandler>();
+builder.Services.AddExceptionHandler<UnexpectedErrorHandler>(); // last: everything the two above leave
 
 // The controllers use the service layer (IJobRetriever, IJournalService, IAcquisitionRunner). The data layer
 // (the database, read-write: the acquisition stores jobs) and Infrastructure (HTTP client, saved pages, input folder)

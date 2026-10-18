@@ -24,13 +24,13 @@
 
 <div class="content">
     <div class="acquire">
-        @if (Model.Banner is { } banner)
+        @if (Model.Banner is { } banner && !(banner.Kind == "error" && Model.Error is not null))
         {
             <partial name="_Banner" model="banner" />
         }
-        @if (Model.Unavailable is not null && Model.Banner is null)
+        @if (v is not null && v.IsRunning && v.StartedFromConsole)
         {
-            <partial name="_Banner" model="@(new PageBanner("error", "The API is not reachable.", Model.Unavailable))" />
+            <partial name="_Banner" model="@(new PageBanner("busy", "An acquisition started from the console is running.", "It can only be stopped there, with Ctrl+C. Wait until it finishes; a second run would double the requests to LinkedIn."))" />
         }
 
         @if (Model.ShowProgress)
@@ -48,18 +48,30 @@
         }
 
         <div class="launch">
-            <form method="post">
-                <button class="start" type="submit" disabled="@(busy ? "disabled" : null)">
-                    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4.5v11a1 1 0 0 0 1.5.86l9-5.5a1 1 0 0 0 0-1.72l-9-5.5A1 1 0 0 0 6 4.5z"/></svg>
-                    @(busy ? "Running…" : "Start acquisition")
-                </button>
-            </form>
+            <div class="launch-buttons">
+                <form method="post">
+                    <button class="start" type="submit" disabled="@(busy ? "disabled" : null)">
+                        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4.5v11a1 1 0 0 0 1.5.86l9-5.5a1 1 0 0 0 0-1.72l-9-5.5A1 1 0 0 0 6 4.5z"/></svg>
+                        @(busy ? "Running…" : "Start acquisition")
+                    </button>
+                </form>
+                @if (Model.CanStop)
+                {
+                    <form method="post" asp-page-handler="Stop">
+                        <input type="hidden" name="since" value="@Model.Since">
+                        <button class="stop" type="submit" disabled="@(Model.StopRequested ? "disabled" : null)">
+                            <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="5" y="5" width="10" height="10" rx="2"/></svg>
+                            @(Model.StopRequested ? "Stopping…" : "Stop")
+                        </button>
+                    </form>
+                }
+            </div>
             <div>
                 <p class="small-label">@(Model.ShowProgress ? "Acquisition" : "Last acquisition")</p>
                 <p class="lastrun">
                     @if (v is null)
                     {
-                        <span>unknown (the API is not reachable)</span>
+                        <span>unknown (the API cannot answer)</span>
                     }
                     else if (v.IsStarting)
                     {
@@ -112,92 +124,23 @@
                     <div class="pp-banner"><partial name="_Banner" model="end" /></div>
                 }
 
-                <div class="pp-step">
-                    <h3>Step 1 · Job links<small>saved pages</small></h3>
-                    <div>
-                        @if (v.Listing is not { } l)
-                        {
-                            <span class="muted">Waiting to start…</span>
-                        }
-                        else
-                        {
-                            <span class="status @l.State">@l.State</span>
-                            <div class="facts-inline">
-                                @if (l.Pages == 0 && l.State != JournalRunState.Running)
-                                {
-                                    <span>No saved pages in the input folder: nothing new to add.</span>
-                                }
-                                else
-                                {
-                                    <span>@l.PagesRead page(s) read, @l.PagesKept kept</span>
-                                    <span>@l.JobsStored job links stored, @l.NewJobs new</span>
-                                    @if (l.ListingId is not null)
-                                    {
-                                        <span class="muted">listing @l.ListingId</span>
-                                    }
-                                }
-                            </div>
-                        }
-                    </div>
-                </div>
+                <nav class="tabs" aria-label="Acquisition">
+                    <a class="@(Model.Tab == AcquireModel.TabProgress ? "on" : null)" asp-page="/Acquire" asp-route-tab="@AcquireModel.TabProgress" asp-route-since="@Model.Since" asp-route-stopping="@(Model.StopRequested ? "true" : null)">Progress</a>
+                    <a class="@(Model.Tab == AcquireModel.TabRun ? "on" : null)" asp-page="/Acquire" asp-route-tab="@AcquireModel.TabRun" asp-route-since="@Model.Since" asp-route-stopping="@(Model.StopRequested ? "true" : null)">Whole run (@v.WholeRun.Count)</a>
+                    <a class="@(Model.Tab == AcquireModel.TabSummary ? "on" : null)" asp-page="/Acquire" asp-route-tab="@AcquireModel.TabSummary" asp-route-since="@Model.Since" asp-route-stopping="@(Model.StopRequested ? "true" : null)">Summary</a>
+                </nav>
 
-                <div class="pp-step">
-                    <h3>Step 2 · Descriptions<small>one at a time</small></h3>
-                    <div>
-                        @if (v.Details is not { } d)
-                        {
-                            <span class="muted">@(busy ? "Waits for step 1." : "Not started.")</span>
-                        }
-                        else if (d.Total == 0)
-                        {
-                            <span class="status @d.State">@d.State</span>
-                            <div class="facts-inline"><span>Every job already has its description: nothing to read.</span></div>
-                        }
-                        else
-                        {
-                            <div class="facts-inline">
-                                @if (busy)
-                                {
-                                    <b>Job @v.JobsDone of @d.Total</b>
-                                }
-                                else
-                                {
-                                    <b>@v.JobsDone of @d.Total tried</b>
-                                }
-                                <span>ok @d.Fetched · failed @d.Failed</span>
-                                @if (!busy && d.ToRead > 0)
-                                {
-                                    <span>@d.ToRead not tried</span>
-                                }
-                                @if (busy && d.EtaSeconds is { } eta)
-                                {
-                                    <span>~@AcquisitionView.Duration(TimeSpan.FromSeconds(eta)) left</span>
-                                }
-                                <span class="chip2 @(d.CircuitState == JournalCircuitState.Closed ? "closed" : "open")">● @v.CircuitText</span>
-                            </div>
-                            <div class="bar" role="progressbar" aria-valuenow="@v.Percent" aria-valuemin="0" aria-valuemax="100"><span style="width:@(v.Percent)%"></span></div>
-                        }
-                    </div>
-                </div>
-
-                @if (v.Activity.Count > 0)
+                @if (Model.Tab == AcquireModel.TabRun)
                 {
-                    <div class="activity">
-                        <p class="small-label">Recent activity</p>
-                        <table>
-                            <tbody>
-                                @foreach (var a in v.Activity)
-                                {
-                                    <tr>
-                                        <td class="muted">@a.At.ToLocalTime().ToString("HH:mm:ss")</td>
-                                        <td><span class="status @a.TagClass">@a.Tag</span></td>
-                                        <td>@a.Subject</td>
-                                        <td class="muted">@a.Text</td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
+                    <partial name="_AcquireWholeRun" model="v" />
+                }
+                else if (Model.Tab == AcquireModel.TabSummary)
+                {
+                    <partial name="_AcquireSummary" model="v" />
+                }
+                else
+                {
+                    <partial name="_AcquireProgress" model="v" />
                 }
 
                 <div class="pp-foot">
@@ -213,6 +156,11 @@
                     }
                 </div>
             </section>
+        }
+
+        @if (Model.Error is { } error)
+        {
+            <partial name="_ErrorPane" model="error" />
         }
     </div>
 </div>

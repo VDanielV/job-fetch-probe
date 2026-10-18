@@ -102,3 +102,21 @@ Proposed plan (each part independent; plan first when picked up):
 - **D. Step 1: do not store the same page twice.** Store a SHA-256 of each page with its listing source (one column and a migration). A page whose hash is already stored is only archived, with the message "already stored in listing …".
 
 Suggested order: C (protects the site, small), then A + B together (the API contract and the web button), then D.
+
+## 6. Progress of an API acquisition: the log and the page refresh (noted 18 Oct 2026)
+
+Seen when running an acquisition from the web page (to tackle later; plan first).
+
+**A. The API's log is not like the console's output.** `LoggingAcquisitionObserver` writes through the default ASP.NET Core console logger, so every event takes two lines (`info: JobFetchProbe.Services.Acquisition.LoggingAcquisitionObserver[0]` and then the text), without the time of day. Some of what the console prints is missing:
+- step 2's plan (jobs to read, one request every N s, the estimate, the circuit breaker settings)
+- the "no requests for X, then one trial request; if refused too, the run stops" explanation
+- the final summary (input pages, job links, descriptions, requests and time, still to read, database)
+
+Possible fix: one line per event with the time (the console logger's single-line format with a timestamp, for this category or the whole API), the same wording as the console (shared texts instead of two separate copies), and the summary at the end.
+
+**B. The 15-second refresh does not fit a cooldown.** While the circuit is open, nothing happens until the trial request, which can be minutes away. The page reloads every 15 s anyway, while step 2 only reports the time left every 30 s. Each reload asks the API for the whole run again (all entries), only to show the same thing with a new countdown.
+
+Possible fixes, from small to larger:
+- refresh at the time of the trial request, or every 60 s while the circuit is open, and every 15 s otherwise
+- a small script that counts down on the page and reloads when something is due
+- poll only the new entries (`after=` the last entry id, which the API already supports) and update the pane without reloading the page; or push updates (server-sent events)

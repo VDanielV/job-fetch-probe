@@ -20,5 +20,8 @@ public sealed class JobDetailsJournalRunRow
     public int StopAfterOpenings { get; set; }
     public int? EtaSeconds { get; set; }
     public string? Message { get; set; }
+    public int? StillUnread { get; set; }
+    public int? TotalRead { get; set; }
+    public string? ErrorType { get; set; }
     public List<JobDetailsJournalEntryRow> Entries { get; set; } = [];
 }

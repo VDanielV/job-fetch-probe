@@ -52,6 +52,10 @@ public sealed class IndexModel(IJobCatalogClient api) : PageModel
         {
             Unavailable = ex.Message;
         }
+        catch (ApiErrorException ex)
+        {
+            Unavailable = "The API could not read the jobs: " + ex.Message;
+        }
     }
 
     /// <summary>The page numbers to show: the first, the last, and the current one with its neighbours; null marks a gap.</summary>

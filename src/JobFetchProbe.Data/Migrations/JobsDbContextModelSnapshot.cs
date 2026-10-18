@@ -251,6 +251,10 @@ namespace JobFetchProbe.Data.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ErrorType")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("EtaSeconds")
                         .HasColumnType("INTEGER");
 
@@ -288,6 +292,9 @@ namespace JobFetchProbe.Data.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("StillUnread")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("StopAfterOpenings")
                         .HasColumnType("INTEGER");
 
@@ -295,6 +302,9 @@ namespace JobFetchProbe.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("Total")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("TotalRead")
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
@@ -352,6 +362,10 @@ namespace JobFetchProbe.Data.Migrations
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("ErrorType")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset?>("FinishedAt")
                         .HasColumnType("TEXT");

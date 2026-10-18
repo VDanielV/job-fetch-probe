@@ -27,5 +27,14 @@ public sealed record JobDetailsJournalRun
     public int StopAfterOpenings { get; init; }
     public int? EtaSeconds { get; init; }
     public string? Message { get; init; }
+
+    /// <summary>When the run ended: jobs still without a description (tried again on the next run).</summary>
+    public int? StillUnread { get; init; }
+
+    /// <summary>When the run ended: jobs with a description in the database, in total.</summary>
+    public int? TotalRead { get; init; }
+
+    /// <summary>When the run failed: the type of the error (for example Microsoft.Data.Sqlite.SqliteException); the message holds its text.</summary>
+    public string? ErrorType { get; init; }
     public IReadOnlyList<JobDetailsJournalEntry> Entries { get; init; } = [];
 }

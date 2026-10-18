@@ -123,6 +123,13 @@ public sealed class PipelineConsole(
             }
         }
 
+        if (step2 is null)
+        {
+            Line("Descriptions", "not read: the acquisition was stopped during step 1");
+            Line("Database", paths.Database);
+            return;
+        }
+
         Line("Descriptions", $"{step2.Fetched} read in this run, {step2.Failed} failed, {step2.Pending} not tried");
         Line(string.Empty, $"{step2.TotalRead} stored in total; {step2.StillUnread} still to read (tried again on the next run)");
         Line("Requests", $"{step2.Requests} sent in {ConsoleLog.Duration(step2.Elapsed)}, circuit breaker opened {step2.CircuitOpenings} time(s)");

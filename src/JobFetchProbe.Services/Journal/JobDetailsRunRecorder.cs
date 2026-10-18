@@ -162,6 +162,8 @@ internal sealed class JobDetailsRunRecorder : IJobDetailsRunRecorder
                 CircuitOpenUntil = null,
                 EtaSeconds = null,
                 Message = summary,
+                StillUnread = result.StillUnread,
+                TotalRead = result.TotalRead,
             };
             core.Save(new JobDetailsJournalEntry(0, now, JobDetailsJournalEntryKind.Finished, 0, result.Unread, null, null, null, false, summary, null));
         });
@@ -179,6 +181,7 @@ internal sealed class JobDetailsRunRecorder : IJobDetailsRunRecorder
                 State = JournalRunState.Failed,
                 EtaSeconds = null,
                 Message = error.GetBaseException().Message,
+                ErrorType = error.GetBaseException().GetType().FullName,
             };
             core.Save(new JobDetailsJournalEntry(0, now, JobDetailsJournalEntryKind.Finished, 0, Run.Total, null, null, null, false, Run.Message, null));
         });

@@ -1,0 +1,10 @@
+@model JobFetchProbe.Web.Pages.PageError
+<section class="error-pane" role="alert">
+    <h2><span aria-hidden="true">✕</span> @Model.Title</h2>
+    <p>@Model.Explanation</p>
+    <pre class="error-message">@Model.Message</pre>
+    @if (Model.ErrorType is not null)
+    {
+        <p class="error-type">Error type: <code>@Model.ErrorType</code></p>
+    }
+</section>

@@ -7,9 +7,10 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 namespace JobFetchProbe.Web.Pages;
 
 /// <summary>
-/// Acquire: explains the acquisition and starts it (POST api/JobFetcher). While one runs, or after starting one here
-/// (?since=…), the explanation gives way to a progress pane read from the journal (api/Journal), and the page reloads
-/// itself every <see cref="RefreshSeconds"/> seconds until the acquisition ends.
+/// Acquire: explains the acquisition, starts it (POST api/JobFetcher) and stops it (POST api/JobFetcher/stop). While one
+/// runs, or after starting one here (?since=…), the explanation gives way to a pane with three tabs read from the
+/// journal (api/Journal): Progress, Whole run and Summary (?tab=). The page reloads itself every
+/// <see cref="RefreshSeconds"/> seconds until the acquisition ends. Errors show in a red pane at the end.
 /// </summary>
 public sealed class AcquireModel(IJobFetcherClient fetcher, IJournalClient journal, TimeProvider time) : PageModel
 {
@@ -19,6 +20,47 @@ public sealed class AcquireModel(IJobFetcherClient fetcher, IJournalClient journ
     public AcquisitionView? View { get; private set; }
 
     public string? Unavailable { get; private set; }
+
+    /// <summary>An error to show in the red pane: from the API, or from the acquisition itself.</summary>
+    public PageError? Error
+    {
+        get
+        {
+            if (apiError is not null)
+            {
+                return apiError;
+            }
+            if (Unavailable is not null)
+            {
+                return PageError.Unreachable(Unavailable);
+            }
+            return View?.Error;
+        }
+    }
+
+    /// <summary>The tab shown in the pane: progress, run or summary.</summary>
+    public string Tab { get; private set; } = TabProgress;
+
+    public const string TabProgress = "progress";
+    public const string TabRun = "run";
+    public const string TabSummary = "summary";
+
+    /// <summary>When the button was pushed (?since=), kept in the tab links and after a stop.</summary>
+    public long? Since { get; private set; }
+
+    /// <summary>A stop was asked from this page: the Stop button shows "Stopping…" until the run ends.</summary>
+    public bool StopRequested { get; private set; }
+
+    /// <summary>The Stop button shows: the acquisition is running (not merely starting) and was started from the web.</summary>
+    public bool CanStop
+    {
+        get
+        {
+            return View is not null && View.IsRunning && !View.IsStarting && !View.StartedFromConsole;
+        }
+    }
+
+    private PageError? apiError;
 
     /// <summary>The answer to the button, shown once after the page reloads.</summary>
     public PageBanner? Banner { get; private set; }
@@ -50,8 +92,14 @@ public sealed class AcquireModel(IJobFetcherClient fetcher, IJournalClient journ
         }
     }
 
-    public async Task OnGetAsync([FromQuery] long? since = null, CancellationToken ct = default)
+    public async Task OnGetAsync(
+        [FromQuery] long? since = null,
+        [FromQuery] string? tab = null,
+        [FromQuery] bool stopping = false,
+        CancellationToken ct = default)
     {
+        Since = since;
+        StopRequested = stopping;
         if (BannerKind is not null && BannerTitle is not null)
         {
             Banner = new PageBanner(BannerKind, BannerTitle, BannerText ?? string.Empty);
@@ -86,6 +134,55 @@ public sealed class AcquireModel(IJobFetcherClient fetcher, IJournalClient journ
         {
             Unavailable = ex.Message;
         }
+        catch (ApiErrorException ex)
+        {
+            apiError = PageError.From(ex.ErrorType, ex.Message);
+        }
+
+        Tab = ChooseTab(tab);
+    }
+
+    /// <summary>The Stop button. As with the start, the answer is shown after a reload.</summary>
+    public async Task<IActionResult> OnPostStopAsync([FromForm] long? since = null, CancellationToken ct = default)
+    {
+        AcquisitionStop stop;
+        try
+        {
+            stop = await fetcher.StopAsync(ct);
+        }
+        catch (ApiUnavailableException ex)
+        {
+            SetBanner("error", "The acquisition was not stopped.", ex.Message);
+            return RedirectToPage(new { since });
+        }
+        catch (ApiErrorException ex)
+        {
+            SetBanner("error", "The acquisition was not stopped.", ex.Message);
+            return RedirectToPage(new { since });
+        }
+
+        if (stop.State == AcquisitionStopState.NotRunning)
+        {
+            SetBanner("busy", "Nothing was stopped.", stop.Message);
+            return RedirectToPage(new { since });
+        }
+
+        SetBanner("busy", $"Stop requested at {stop.At.ToLocalTime():HH:mm:ss}.", stop.Message + " What was read so far is kept.");
+        return RedirectToPage(new { since, stopping = true });
+    }
+
+    /// <summary>Progress while the acquisition starts or runs, Summary once it has ended; the ?tab= choice wins.</summary>
+    private string ChooseTab(string? asked)
+    {
+        if (asked is TabProgress or TabRun or TabSummary)
+        {
+            return asked;
+        }
+        if (View is not null && !View.IsRunning && !View.IsStarting && View.State is not null)
+        {
+            return TabSummary;
+        }
+        return TabProgress;
     }
 
     /// <summary>The button. The answer is shown after a reload (post, redirect, get), so a refresh never starts a second run.</summary>
@@ -97,6 +194,11 @@ public sealed class AcquireModel(IJobFetcherClient fetcher, IJournalClient journ
             start = await fetcher.StartAsync(ct);
         }
         catch (ApiUnavailableException ex)
+        {
+            SetBanner("error", "The acquisition was not started.", ex.Message);
+            return RedirectToPage();
+        }
+        catch (ApiErrorException ex)
         {
             SetBanner("error", "The acquisition was not started.", ex.Message);
             return RedirectToPage();

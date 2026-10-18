@@ -24,5 +24,8 @@ public sealed record JobListingJournalRun
     public int NewJobs { get; init; }
     public string? ListingId { get; init; }
     public string? Message { get; init; }
+
+    /// <summary>When the run failed: the type of the error (for example System.IO.IOException); the message holds its text.</summary>
+    public string? ErrorType { get; init; }
     public IReadOnlyList<JobListingJournalEntry> Entries { get; init; } = [];
 }

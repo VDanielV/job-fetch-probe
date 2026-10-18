@@ -1,0 +1,14 @@
+@model IReadOnlyList<JobFetchProbe.Web.Pages.ActivityLine>
+<table class="log">
+    <tbody>
+        @foreach (var a in Model)
+        {
+            <tr>
+                <td class="muted">@a.At.ToLocalTime().ToString("HH:mm:ss")</td>
+                <td><span class="status @a.TagClass">@a.Tag</span></td>
+                <td>@a.Subject</td>
+                <td class="muted">@a.Text</td>
+            </tr>
+        }
+    </tbody>
+</table>
