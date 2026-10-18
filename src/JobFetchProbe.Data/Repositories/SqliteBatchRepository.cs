@@ -1,5 +1,5 @@
 using JobFetchProbe.Data.Entities;
-using JobFetchProbe.Models.Inbox;
+using JobFetchProbe.Models.FetchJobListing;
 using JobFetchProbe.Services.Abstractions;
 using Microsoft.EntityFrameworkCore;
 

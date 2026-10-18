@@ -9,19 +9,31 @@ namespace JobFetchProbe.Services.Parsing;
 /// </summary>
 public static partial class JobIdResolver
 {
-    public static string? FromUrl(Uri url) => FromPath(url.AbsolutePath);
+    public static string? FromUrl(Uri url)
+    {
+        var m = IdInPath().Match(url.AbsolutePath);
+        if (!m.Success)
+        {
+            return null;
+        }
+        return m.Groups[1].Value;
+    }
 
     /// <summary>From the page's canonical link or og:url (works for saved pages).</summary>
-    public static string? FromHtml(string html) =>
-        CanonicalUrl(html) is { } url && Uri.TryCreate(url, UriKind.Absolute, out var uri) ? FromUrl(uri) : null;
+    public static string? FromHtml(string html)
+    {
+        if (CanonicalUrl(html) is { } url && Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            return FromUrl(uri);
+        }
+        return null;
+    }
 
     /// <summary>The page's own address from its canonical link or og:url, if it is an absolute http(s) URL.</summary>
-    public static Uri? CanonicalUri(string html) =>
-        CanonicalUrl(html) is { } url &&
-        Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
-        (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp)
-            ? uri
-            : null;
+    public static Uri? CanonicalUri(string html)
+    {
+        return UrlHelper.AbsoluteWebUri(CanonicalUrl(html));
+    }
 
     public static string? CanonicalUrl(string html)
     {
@@ -30,13 +42,11 @@ public static partial class JobIdResolver
         {
             m = OgUrl().Match(html);
         }
-        return m.Success ? WebUtility.HtmlDecode(m.Groups[1].Value) : null;
-    }
-
-    private static string? FromPath(string path)
-    {
-        var m = IdInPath().Match(path);
-        return m.Success ? m.Groups[1].Value : null;
+        if (!m.Success)
+        {
+            return null;
+        }
+        return WebUtility.HtmlDecode(m.Groups[1].Value);
     }
 
     [GeneratedRegex(@"/jobs/view/(?:[^/]*?-)?(\d{6,})/?$", RegexOptions.IgnoreCase)]

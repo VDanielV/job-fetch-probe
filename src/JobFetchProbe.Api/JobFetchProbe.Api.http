@@ -15,5 +15,21 @@ GET {{api}}/api/JobCatalog?page=1&pageSize=0
 ### Unknown job (404)
 GET {{api}}/api/JobCatalog/123
 
+### Journal: the newest runs of both steps
+GET {{api}}/api/Journal/runs?take=10
+Accept: application/json
+
+### Journal: a step 1 run (FetchJobListing) with all its entries (use a run id from the list above)
+GET {{api}}/api/Journal/job-listing/runs/1?after=0
+Accept: application/json
+
+### Journal: a step 2 run (FetchJobDetails), only the entries after entry 10
+GET {{api}}/api/Journal/job-details/runs/1?after=10
+Accept: application/json
+
+### Start an acquisition (202 Accepted; 409 Conflict if one is already running). Then follow it in the journal.
+POST {{api}}/api/JobFetcher
+Accept: application/json
+
 ### The API description (Development only)
 GET {{api}}/openapi/v1.json

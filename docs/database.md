@@ -1,15 +1,21 @@
 # Database design
 
-`jobs.db` (SQLite), created and migrated by the console app through EF Core. The tables are defined in `src/JobFetchProbe.Data` (`Entities/` and `Configurations/`, one class each per table). This page describes the model after the migration `RemoveSearchesAndListingProgress`.
+`jobs.db` (SQLite), created and migrated by the console app through EF Core. The tables are defined in `src/JobFetchProbe.Data` (`Entities/` and `Configurations/` for jobs and listings, `Journal/Entities/` and `Journal/Configurations/` for the journal; one class each per table). This page describes the model after the migration `AddJournal`.
 
 ![Tables of jobs.db and how they relate](database.svg)
 
-## Two groups of tables
+## Three groups of tables
 
 - **Listings** (green), written by step 1. A *listing* is one run of step 1 that stored something: the saved pages it read (`ListingSources`) and the job cards those pages showed (`ListingJobs`), exactly as shown.
 - **Jobs** (blue), read and filled by step 2. `Jobs` has one row per job, however many listings show it; `JobDetails` holds the labelled facts from the job page. The web app and the API read only these two tables.
 
 `ListingJobs` connects the two groups: one row per job per listing, so the same job can appear in many listings while being stored, and read, only once.
+
+- **Journal** (violet), written while a step runs and read by the API, from another process, at the same time. One pair of tables per step, because the two steps report different things:
+  - `JobListingJournalRuns` / `JobListingJournalEntries`: step 1 (FetchJobListing) runs, and per page what happened (read, kept, archived).
+  - `JobDetailsJournalRuns` / `JobDetailsJournalEntries`: step 2 (FetchJobDetails) runs, and per job and per circuit breaker change what happened.
+
+  The *run* row is where the run stands now (state, counters, circuit breaker, last sign of life); the *entries* are what happened, in order. A reader asks for a run with the entries after the last id it has, and stops when the state is no longer `Running`. The journal is not linked to the other tables by keys (`ListingId` is informational), so it can be pruned freely.
 
 ## Relationships
 
@@ -19,6 +25,8 @@
 | `Listings` | `ListingJobs` | `BatchId` | cascade: its cards are deleted too |
 | `Jobs` | `ListingJobs` | `JobId` | restrict: a job cannot be deleted while a listing shows it |
 | `Jobs` | `JobDetails` | `JobId` | cascade: its details are deleted too |
+| `JobListingJournalRuns` | `JobListingJournalEntries` | `RunId` | cascade: its entries are deleted too |
+| `JobDetailsJournalRuns` | `JobDetailsJournalEntries` | `RunId` | cascade: its entries are deleted too |
 
 ## Notes
 
@@ -26,6 +34,8 @@
 - **`Jobs.Status`** is stored as text: `Pending` (never tried), `Read`, `Blocked`, `Failed` (tried again on the next run) or `Gone` (404/410, not tried again).
 - **`Position`** keeps the order of pages, cards and details as they appeared.
 - **Indexes** speed up the queries the app runs: jobs by status (step 2's work list), by company, and children by parent.
+- **Journal states** (`State`): `Running`, `Completed`, `Stopped` (circuit breaker gave up, or Ctrl+C), `Failed` (an error, in `Message`), `Abandoned` (no sign of life for 2 minutes: the process ended without saying so). A running process refreshes `LastSeenAt` at least every 30 seconds. `CircuitOpenUntil` is written once when the circuit opens; readers compute the countdown from it.
+- **Journal size:** each step keeps its last 50 runs; older runs and their entries are deleted when a new run starts. To be reviewed (a TODO in `JournalService` and an item in `backlog.md`): a process that fails over and over keeps adding runs.
 - EF Core also keeps its own table, `__EFMigrationsHistory`, with the migrations already applied. It is not part of the design and is not shown.
 
 ## Mermaid version
@@ -38,6 +48,8 @@ erDiagram
     Listings ||--o{ ListingJobs : "contained (cascade)"
     Jobs ||--o{ ListingJobs : "shown in (restrict)"
     Jobs ||--o{ JobDetails : "has (cascade)"
+    JobListingJournalRuns ||--o{ JobListingJournalEntries : "recorded (cascade)"
+    JobDetailsJournalRuns ||--o{ JobDetailsJournalEntries : "recorded (cascade)"
 
     Listings {
         TEXT BatchId PK
@@ -86,5 +98,65 @@ erDiagram
         INTEGER Position
         TEXT Label
         TEXT Value
+    }
+    JobListingJournalRuns {
+        INTEGER Id PK
+        TEXT StartedBy "Console, Api"
+        TEXT StartedAt
+        TEXT LastSeenAt "sign of life"
+        TEXT FinishedAt "nullable"
+        TEXT State "Running, Completed, Stopped, Failed, Abandoned"
+        INTEGER Pages
+        INTEGER PagesRead
+        INTEGER PagesKept
+        INTEGER JobsStored
+        INTEGER NewJobs
+        TEXT ListingId "nullable"
+        TEXT Message "nullable"
+    }
+    JobListingJournalEntries {
+        INTEGER Id PK
+        INTEGER RunId FK
+        TEXT At
+        INTEGER Index
+        INTEGER Total
+        TEXT File
+        TEXT Outcome "Read, Kept, Archived, NotArchived"
+        INTEGER Jobs
+        INTEGER NewJobs
+        TEXT Message "nullable"
+    }
+    JobDetailsJournalRuns {
+        INTEGER Id PK
+        TEXT StartedBy "Console, Api"
+        TEXT StartedAt
+        TEXT LastSeenAt "sign of life"
+        TEXT FinishedAt "nullable"
+        TEXT State "Running, Completed, Stopped, Failed, Abandoned"
+        INTEGER Total
+        INTEGER ToRead
+        INTEGER Fetched
+        INTEGER Failed
+        INTEGER Requests
+        TEXT CircuitState "Closed, Open, HalfOpen"
+        TEXT CircuitOpenUntil "nullable"
+        INTEGER Openings
+        INTEGER StopAfterOpenings
+        INTEGER EtaSeconds "nullable"
+        TEXT Message "nullable"
+    }
+    JobDetailsJournalEntries {
+        INTEGER Id PK
+        INTEGER RunId FK
+        TEXT At
+        TEXT Kind "Started, Job, CircuitOpened, CircuitHalfOpen, CircuitClosed, Stopped, Finished"
+        INTEGER Index
+        INTEGER Total
+        TEXT JobId "nullable"
+        TEXT Title "nullable"
+        TEXT Status "nullable"
+        INTEGER Gone
+        TEXT Message "nullable"
+        INTEGER WaitSeconds "nullable"
     }
 ```

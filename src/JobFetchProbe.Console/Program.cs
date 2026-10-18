@@ -2,6 +2,7 @@ using JobFetchProbe.Console;
 using JobFetchProbe.Data;
 using JobFetchProbe.Data.Configuration;
 using JobFetchProbe.Infrastructure;
+using JobFetchProbe.Infrastructure.FetchJobListing;
 using JobFetchProbe.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -13,7 +14,7 @@ using Microsoft.Extensions.Options;
 //   Step 2  every job without a description → read its page, one at a time → description and status in the database
 //   Summary the totals
 // There are no commands or arguments. Exit code: 0 nothing left to do, 1 something left for the next run,
-// 2 configuration error, 3 database error.
+// 2 configuration error, 3 database error, 4 another acquisition (the API's) is running.
 
 // Content root = the folder the app was built to, so appsettings.json is found however the app is started.
 var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
@@ -25,15 +26,21 @@ var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
 var dataRoot = DataPaths.AddDataRootDefaults(builder.Configuration);
 
 builder.Services
-    .AddServices()
+    .AddServices(builder.Configuration)
     .AddInfrastructure(builder.Configuration)
-    .AddJobStore(builder.Configuration);
+    .AddJobStore(builder.Configuration)
+    .AddJournal();
 
 // EF Core logs failed commands itself; the app reports database errors in one line instead (exit code 3).
 builder.Logging.AddFilter("Microsoft.EntityFrameworkCore", LogLevel.None);
 
-builder.Services.AddSingleton<InboxConsole>();
-builder.Services.AddSingleton<DetailsConsole>();
+// The console classes only print; the paths they show are handed to them here, so they need no Data or Infrastructure types.
+builder.Services.AddSingleton(sp => new ConsolePaths(
+    sp.GetRequiredService<IOptions<DatabaseSettings>>().Value.FullPath,
+    Path.GetFullPath(sp.GetRequiredService<IOptions<FetchJobListingSettings>>().Value.Folder),
+    Path.GetFullPath(sp.GetRequiredService<IOptions<FetchJobListingSettings>>().Value.ArchiveFolder)));
+builder.Services.AddSingleton<FetchJobListingConsole>();
+builder.Services.AddSingleton<FetchJobDetailsConsole>();
 builder.Services.AddSingleton<PipelineConsole>();
 
 using var host = builder.Build();
@@ -60,7 +67,7 @@ catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or Micros
 }
 catch (OptionsValidationException ex)
 {
-    // A bad value in appsettings.json, e.g. an empty Inbox:Folder.
+    // A bad value in appsettings.json, e.g. an empty FetchJobListing:Folder.
     Console.Error.WriteLine($"Configuration error: {ex.Message}");
     return 2;
 }

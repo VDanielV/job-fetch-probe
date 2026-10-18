@@ -1,5 +1,7 @@
+using JobFetchProbe.Data.Journal.Repositories;
 using JobFetchProbe.Data.Repositories;
 using JobFetchProbe.Services.Abstractions;
+using JobFetchProbe.Services.Abstractions.Journal;
 using JobFetchProbe.Services.Catalog;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -12,25 +14,30 @@ namespace JobFetchProbe.Data;
 public static class DependencyInjection
 {
     /// <summary>
-    /// For the console app: the database, opened read-write (and created when missing, see
-    /// <see cref="DatabaseInitializer.InitializeDatabaseAsync"/>), and the repositories the flow writes through.
+    /// For the apps that fetch (the console app, and the API since it starts acquisitions): the database, opened
+    /// read-write (and created when missing, see <see cref="DatabaseInitializer.InitializeDatabaseAsync"/>), the
+    /// repositories the flow writes through, the read-only view of the jobs, and the journal.
     /// </summary>
     public static IServiceCollection AddJobStore(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddDatabase(configuration, readOnly: false);
         services.AddSingleton<IBatchRepository, SqliteBatchRepository>();
         services.AddSingleton<IJobRepository, SqliteJobRepository>();
+        services.AddSingleton<IJobCatalog, SqliteJobCatalog>();
+        services.AddSingleton<IJournalRepository, SqliteJournalRepository>();
         return services;
     }
 
     /// <summary>
-    /// Only what the web app and the API need: the database settings and a read-only view of the jobs. The connection
-    /// is opened read-only, so they can never change the database, nor create it when it does not exist yet.
+    /// Read-only access: the database settings, a view of the jobs, and the journal to read. The connection is opened
+    /// read-only, so it can never change the database, nor create it when it does not exist yet. For an app that only
+    /// reads (the API used it until it started acquisitions).
     /// </summary>
     public static IServiceCollection AddJobCatalog(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddDatabase(configuration, readOnly: true);
         services.AddSingleton<IJobCatalog, SqliteJobCatalog>();
+        services.AddSingleton<IJournalRepository, SqliteJournalRepository>();
         return services;
     }
 

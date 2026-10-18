@@ -7,8 +7,8 @@ namespace JobFetchProbe.Data.Configuration;
 /// One setting, Paths:DataRoot, places every folder and file the apps read or write (the console app and the API):
 /// <code>
 /// &lt;DataRoot&gt;\database\jobs.db      Database:Path
-/// &lt;DataRoot&gt;\input\                Inbox:Folder          (save search result pages here)
-/// &lt;DataRoot&gt;\input\archived\       Inbox:ArchiveFolder   (pages already read)
+/// &lt;DataRoot&gt;\input\                FetchJobListing:Folder          (save search result pages here)
+/// &lt;DataRoot&gt;\input\archived\       FetchJobListing:ArchiveFolder   (pages already read)
 /// </code>
 /// These are defaults with the lowest priority: a folder set explicitly in appsettings.json or an environment
 /// variable still wins, so any one of them can be moved on its own.
@@ -20,8 +20,8 @@ public static class DataPaths
     public static readonly IReadOnlyDictionary<string, string> Layout = new Dictionary<string, string>
     {
         ["Database:Path"] = Path.Combine("database", "jobs.db"),
-        ["Inbox:Folder"] = "input",
-        ["Inbox:ArchiveFolder"] = Path.Combine("input", "archived"),
+        ["FetchJobListing:Folder"] = "input",
+        ["FetchJobListing:ArchiveFolder"] = Path.Combine("input", "archived"),
     };
 
     /// <summary>Folders created at start-up so the user can see where to put things.</summary>

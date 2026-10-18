@@ -188,6 +188,218 @@ namespace JobFetchProbe.Data.Migrations
                     b.ToTable("ListingSources", (string)null);
                 });
 
+            modelBuilder.Entity("JobFetchProbe.Data.Journal.Entities.JobDetailsJournalEntryRow", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Gone")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Index")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("JobId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Message")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("RunId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Status")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Total")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("WaitSeconds")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RunId", "Id");
+
+                    b.ToTable("JobDetailsJournalEntries", (string)null);
+                });
+
+            modelBuilder.Entity("JobFetchProbe.Data.Journal.Entities.JobDetailsJournalRunRow", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset?>("CircuitOpenUntil")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CircuitState")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("EtaSeconds")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Failed")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Fetched")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("LastSeenAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Message")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Openings")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Requests")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("StartedBy")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("StopAfterOpenings")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ToRead")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Total")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("State");
+
+                    b.ToTable("JobDetailsJournalRuns", (string)null);
+                });
+
+            modelBuilder.Entity("JobFetchProbe.Data.Journal.Entities.JobListingJournalEntryRow", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("File")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Index")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Jobs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Message")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("NewJobs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("RunId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Total")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RunId", "Id");
+
+                    b.ToTable("JobListingJournalEntries", (string)null);
+                });
+
+            modelBuilder.Entity("JobFetchProbe.Data.Journal.Entities.JobListingJournalRunRow", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("JobsStored")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("LastSeenAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ListingId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Message")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("NewJobs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Pages")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PagesKept")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PagesRead")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("StartedBy")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("State");
+
+                    b.ToTable("JobListingJournalRuns", (string)null);
+                });
+
             modelBuilder.Entity("JobFetchProbe.Data.Entities.JobDetailRow", b =>
                 {
                     b.HasOne("JobFetchProbe.Data.Entities.JobRow", null)
@@ -221,6 +433,24 @@ namespace JobFetchProbe.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("JobFetchProbe.Data.Journal.Entities.JobDetailsJournalEntryRow", b =>
+                {
+                    b.HasOne("JobFetchProbe.Data.Journal.Entities.JobDetailsJournalRunRow", null)
+                        .WithMany("Entries")
+                        .HasForeignKey("RunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("JobFetchProbe.Data.Journal.Entities.JobListingJournalEntryRow", b =>
+                {
+                    b.HasOne("JobFetchProbe.Data.Journal.Entities.JobListingJournalRunRow", null)
+                        .WithMany("Entries")
+                        .HasForeignKey("RunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("JobFetchProbe.Data.Entities.JobRow", b =>
                 {
                     b.Navigation("Details");
@@ -231,6 +461,16 @@ namespace JobFetchProbe.Data.Migrations
                     b.Navigation("Jobs");
 
                     b.Navigation("Sources");
+                });
+
+            modelBuilder.Entity("JobFetchProbe.Data.Journal.Entities.JobDetailsJournalRunRow", b =>
+                {
+                    b.Navigation("Entries");
+                });
+
+            modelBuilder.Entity("JobFetchProbe.Data.Journal.Entities.JobListingJournalRunRow", b =>
+                {
+                    b.Navigation("Entries");
                 });
 #pragma warning restore 612, 618
         }

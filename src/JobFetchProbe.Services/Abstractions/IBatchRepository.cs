@@ -1,4 +1,4 @@
-using JobFetchProbe.Models.Inbox;
+using JobFetchProbe.Models.FetchJobListing;
 
 namespace JobFetchProbe.Services.Abstractions;
 

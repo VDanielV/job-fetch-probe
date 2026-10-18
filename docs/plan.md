@@ -12,7 +12,7 @@ Collect job postings in one database, in one fixed flow that runs every time the
 2. **Job links → job descriptions.** The app goes through every job without a description, one at a time, reads its page, and stores the description, details and status.
 3. **Summary** with the totals; then the app exits.
 
-A separate, read-only **web app** shows what is stored: a paged table of all jobs, and a page per job with its details and description. A read-only **REST API** (`JobCatalog`: one page of jobs, or one job in full) returns the same data as JSON; the web page gets its data only from it.
+A separate, read-only **web app** shows what is stored: a paged table of all jobs, and a page per job with its details and description. A **REST API** (`JobCatalog`: one page of jobs, or one job in full) returns the same data as JSON; the web page gets its data only from it. It can also start an acquisition in the background (`POST api/JobFetcher`), through the same services as the console app.
 
 ## How it got here
 
@@ -30,13 +30,13 @@ On 15 Oct 2026 it was **simplified to the one flow above**. The interactive prom
 | In scope | Out of scope |
 | --- | --- |
 | Saved search result pages from an input folder, merged without duplicates | Requesting search result pages (pagination, `/jobs-guest/` endpoints) |
-| The description of every job not read yet, one request at a time | Reading jobs in parallel, or faster than one per `Details:DelaySeconds` |
+| The description of every job not read yet, one request at a time | Reading jobs in parallel, or faster than one per `FetchJobDetails:DelaySeconds` |
 | Title, company, location, posted, type, details, description, status | Recruiter names, contact details, profiles |
 | One local SQLite file (EF Core), created and migrated by the app | A database server, JSON files, imports and exports |
 | LinkedIn public job and search page layouts, schema.org `JobPosting`, generic fallback | Login, cookies, browser automation, applying to jobs |
 | One run per start, then exit | Commands, a prompt, watching the folder, scheduled runs |
 | A read-only web page: menu, jobs table with pagination, details pane with a draggable divider | Editing, filtering, searching or deleting jobs in the web page; logins |
-| A read-only REST API: a page of jobs, one job | Writing endpoints, authentication, the web page using the API (later) |
+| A REST API: a page of jobs, one job; the journal of the runs; starting an acquisition | Endpoints that change jobs, authentication |
 
 ## Boundary
 
@@ -44,11 +44,11 @@ The app identifies itself honestly, sends no cookies, and never tries to get aro
 
 Step 1 sends no requests at all: it reads pages the operator saved. For more results than one page shows, the operator scrolls in the browser or saves more pages.
 
-Step 2 sends many requests, so it is strict: one request at a time, a pause of `Details:DelaySeconds` between them, and a circuit breaker. A single refusal opens the circuit; nothing is sent until the cooldown has passed, then one trial request decides whether to go on. After `StopAfterOpenings` openings the run stops, and the remaining jobs wait for a later start. LinkedIn's `robots.txt` disallows automated access to job pages, so in practice expect the circuit to open early; step 2 is meant for small numbers of jobs and for sites that allow it. LinkedIn's terms prohibit unauthorized automated copying; the tool is meant for reading postings the operator chose to collect, not for bulk collection.
+Step 2 sends many requests, so it is strict: one request at a time, a pause of `FetchJobDetails:DelaySeconds` between them, and a circuit breaker. A single refusal opens the circuit; nothing is sent until the cooldown has passed, then one trial request decides whether to go on. After `StopAfterOpenings` openings the run stops, and the remaining jobs wait for a later start. LinkedIn's `robots.txt` disallows automated access to job pages, so in practice expect the circuit to open early; step 2 is meant for small numbers of jobs and for sites that allow it. LinkedIn's terms prohibit unauthorized automated copying; the tool is meant for reading postings the operator chose to collect, not for bulk collection.
 
 ## How it works
 
-Step 1 (`InboxService`):
+Step 1, **FetchJobListing** (`JobListingFetcher`):
 
 1. Every saved page in `<DataRoot>\input` is read, oldest first. A Chrome view-source save is unwrapped first.
 2. The page's address comes from its canonical link, `og:url` or the browser's "saved from" note; a page without one, a signed-in view-source save (only the selected job), a page without job links or a bot-check page is kept in `input` with the reason.
@@ -56,13 +56,15 @@ Step 1 (`InboxService`):
 4. All pages' jobs are stored together as one listing; new jobs get a `Pending` row.
 5. Only then is each page read moved to `input\archived`.
 
-Step 2 (`DetailsService`):
+Step 2, **FetchJobDetails** (`JobDetailsFetcher`):
 
 1. The work list is every job `Pending`, `Blocked` or `Failed`: never-tried jobs first.
 2. Each job page is read with a factory-managed `HttpClient` and parsed with the first layout that matches (LinkedIn public page, schema.org JSON-LD, generic fallback).
 3. The result is stored at once: `Read` with the description and details, `Blocked` or `Failed` with the reason (tried again next time), or `Gone` for a 404/410 (not tried again).
 4. Every result also feeds the circuit breaker: read (success), refused (opens the circuit), network or server error (opens it after a few in a row), 404 (neutral).
 5. The console shows each job with progress and time left, every circuit breaker change, and a countdown while it is open.
+
+Both steps record their progress in the journal while they run (see the README, "Journal"); the API reads it.
 
 The summary prints pages found, archived and kept; job links stored; descriptions read, failed and not tried; how many jobs are still to read; requests, time and circuit openings.
 
@@ -71,8 +73,11 @@ The summary prints pages found, archived and kept; job links stored; description
 | Decision | Reason |
 | --- | --- |
 | Web app as its own project, reading only through the API (`IJobCatalogClient`, two GET calls) | The console flow stays untouched; the web page never writes and never opens the database, so it can stay open while the console runs. One source of the reading rules (the API). Razor Pages: a menu, the jobs table and a details pane in one page; selection lives in the address (`?job=`), so it works with Back, reload and bookmarks |
+| A journal of every run, one pair of tables per step, written while the step runs and read through `api/Journal` | Progress can be followed from another process (and later the web page), whoever started the run, during it and after a restart; the steps do not know about it (the console feeds their progress to a recorder); writes are queued and never stop a fetch; a sign of life every 30 s, Abandoned after 2 minutes without one |
+| Journal isolated in its own folders in every layer (`Models/Journal`, `Services/Journal`, `Data/Journal`, `JournalController`) | It can change, or be removed, without touching the steps; the folder structure shows the boundary |
 | One small script (`split.js`) only for the draggable divider and clickable rows | Everything else is server-rendered HTML and CSS; without the script the page still works, only dragging stops |
-| API as its own project with controllers | The only reader of the database for display; the web page uses it; OpenAPI describes it for clients. Read-only database connection for both readers |
+| API as its own project with controllers | The only reader of the database for display; the web page uses it; OpenAPI describes it for clients. Read-write since it starts acquisitions |
+| Acquisition from the API in the background (`AcquisitionRunner`, a hosted service), answered with 202; one at a time, checked through the journal | A run takes minutes or hours, an HTTP request cannot wait; the journal check also sees console runs, so the site is never asked twice as often; stopping the API stops the run cleanly |
 | The API's controllers use a service (`IJobRetriever`), not the repository | Layers Api → Services → Data: the reading rules (page limits, job ID) live in Services; the data layer says whether the database exists; the controller only maps results to HTTP. A missing database is one exception turned into 503 by one handler |
 | One flow, no commands or arguments | The work always happens in the same order; nothing to remember, nothing to choose wrongly |
 | Step 2 works from the database, not from the listing just written | A stopped run resumes on the next start by itself, even with an empty input folder; no job is read twice |
@@ -84,6 +89,7 @@ The summary prints pages found, archived and kept; job links stored; description
 | One row per job, cards stored per listing | No duplicate jobs or requests; each listing still shows exactly what its pages showed |
 | Data folder outside the repository, one `Paths:DataRoot` setting | Git can never delete the database or saved pages; one folder to back up; one line to move it all |
 | Database rows (`Database/Entities`, `…Row`) separate from the shared models | Models say what the app works with; rows say how SQLite stores it. Tables can change without touching Services or Console; a small mapping class is the price |
+| The two steps are named for what they do: **FetchJobListing** (step 1) and **FetchJobDetails** (step 2), in type, folder, namespace and settings names; code used by both lives in `Services/Parsing` | Each step reads as what it does, can be found and run on its own, and step 1 never depends on step 2's code (only on shared helpers) |
 | One type per file; folders per step; one EF configuration class per table | Easy to find, small diffs; the C# convention (StyleCop SA1402) |
 | Seven projects: Console, Web, Api, Services, Models, Infrastructure, Data | Separates the apps, the logic and the outside world; Services never touches HTTP, files or the database directly |
 | Data layer as its own project (`JobFetchProbe.Data`): context, entities, migrations, all three repositories | One project owns the database; Models stays DTOs only; the interfaces stay in `Services/Abstractions` (Services defines what it needs, Data implements it). Only the API reads it for display (the web page goes through the API) |
@@ -94,6 +100,8 @@ The summary prints pages found, archived and kept; job links stored; description
 | Archive only after the listing is stored | A failed write never loses track of a page: it stays in `input` for the next run |
 | Circuit breaker opens on the first refusal; the trial request is the job that opened it | A refusal is the site saying no; no job is skipped because of a temporary refusal |
 | Progress through `IProgress<T>`, printed by the console classes | Services stay free of console code; the console shows what happens as it happens |
+| Repeated actions in Services as helpers (`Parsing/HtmlQuery`, `UrlHelper`, `JsonLd`; step 2's `FetchOutcome`, `TimeLeftEstimate`; the journal's `RunRecorderCore`) | Each parser keeps only its layouts and each recorder only its step; the helpers are pure functions, easy to read and to test |
+| The order of the steps in Services (`IAcquisitionService`, told about progress through `IAcquisitionObserver`); step 2's settings in Services; the console classes only print | Console → Services → (Data \| Infrastructure): only the console's `Program.cs` knows Data and Infrastructure, and the API can later run the same acquisition |
 
 ## Known limitations
 

@@ -1,14 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
-  <!-- RESTful API over the jobs database (read-only). For now: the JobCatalog controller. -->
+  <!-- RESTful API over the jobs database: reads jobs and the journal, starts acquisitions (JobFetcher). -->
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.13" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\JobFetchProbe.Services\JobFetchProbe.Services.csproj" />
-    <!-- Only for Program.cs, which wires the data layer into DI. Controllers use Services types only. -->
+    <!-- Only for Program.cs, which wires Data and Infrastructure into DI. Controllers use Services types only. -->
     <ProjectReference Include="..\JobFetchProbe.Data\JobFetchProbe.Data.csproj" />
+    <ProjectReference Include="..\JobFetchProbe.Infrastructure\JobFetchProbe.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

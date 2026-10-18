@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace JobFetchProbe.Data.Configurations;
 
-/// <summary>One inbox run; its pages and cards are deleted with it.</summary>
+/// <summary>One FetchJobListing run (step 1); its pages and cards are deleted with it.</summary>
 internal sealed class ListingRowConfiguration : IEntityTypeConfiguration<ListingRow>
 {
     public void Configure(EntityTypeBuilder<ListingRow> builder)
