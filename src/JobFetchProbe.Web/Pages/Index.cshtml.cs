@@ -1,6 +1,9 @@
 using JobFetchProbe.Models.Archive;
 using JobFetchProbe.Models.Catalog;
+using System.Diagnostics;
+using System.Text.Json;
 using JobFetchProbe.Models.Filter;
+using JobFetchProbe.Models.Fit;
 using JobFetchProbe.Web.Api;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Mvc;
@@ -16,7 +19,7 @@ namespace JobFetchProbe.Web.Pages;
 /// A text filter (?q=…&amp;in=title) and the page size (?size=50, remembered in a cookie) narrow the list; every link,
 /// form and redirect keeps them.
 /// </summary>
-public sealed class IndexModel(IJobCatalogClient api, IJobArchiveClient archive) : PageModel
+public sealed class IndexModel(IJobCatalogClient api, IJobArchiveClient archive, IJobFitClient fits) : PageModel
 {
     public const int DefaultPageSize = 25;
     public const string SizeCookie = "overview.size";
@@ -72,6 +75,13 @@ public sealed class IndexModel(IJobCatalogClient api, IJobArchiveClient archive)
     [TempData]
     public string? BannerText { get; set; }
 
+    /// <summary>Without the script: the score of the job in the pane, carried over the redirect once (JSON).</summary>
+    [TempData]
+    public string? FitJson { get; set; }
+
+    /// <summary>The score of the job in the pane, when "Check fit" was used without the script; null otherwise.</summary>
+    public FitView? Fit { get; private set; }
+
     /// <summary>Null when the jobs cannot be shown; <see cref="Unavailable"/> then says why.</summary>
     public JobSummaryPage? Jobs { get; private set; }
 
@@ -107,6 +117,14 @@ public sealed class IndexModel(IJobCatalogClient api, IJobArchiveClient archive)
         if (BannerKind is not null && BannerTitle is not null)
         {
             Banner = new PageBanner(BannerKind, BannerTitle, BannerText ?? string.Empty);
+        }
+        if (FitJson is not null)
+        {
+            var fit = JsonSerializer.Deserialize<FitView>(FitJson, FitJsonOptions);
+            if (fit is not null && fit.JobId == SelectedId)
+            {
+                Fit = fit;
+            }
         }
 
         try
@@ -183,6 +201,45 @@ public sealed class IndexModel(IJobCatalogClient api, IJobArchiveClient archive)
             return Back(p, null); // archived; the next job could not be worked out, so the pane closes
         }
     }
+
+    /// <summary>
+    /// "Check fit": scores the job in the pane with the local model (POST api/JobFit; up to about two minutes). The page's
+    /// script asks for the result card only (X-Requested-With: fetch) and puts it in the pane; without the script, the
+    /// page comes back with the card. Leaving the page or Cancel stops the request, and with it the API's call to Ollama.
+    /// </summary>
+    public async Task<IActionResult> OnPostFitAsync(
+        string jobId, int p = 1, int archived = 0, string? q = null, [FromForm(Name = "in")] string? scope = null, int? size = null,
+        string[]? place = null, string[]? mode = null, CancellationToken ct = default)
+    {
+        SetState(archived, q, scope, size, place, mode);
+        var clock = Stopwatch.StartNew();
+        FitView view;
+        try
+        {
+            var result = await fits.AssessAsync(jobId, ct);
+            view = new FitView(jobId, result, null, (int)Math.Round(clock.Elapsed.TotalSeconds));
+        }
+        catch (Exception ex) when (ex is ApiUnavailableException || ex is ApiErrorException)
+        {
+            view = new FitView(jobId, null, ex.Message, (int)Math.Round(clock.Elapsed.TotalSeconds));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            return new EmptyResult(); // the browser stopped waiting (Cancel, or another job opened)
+        }
+
+        if (Request.Headers["X-Requested-With"] == "fetch")
+        {
+            return Partial("_FitResult", view);
+        }
+        FitJson = JsonSerializer.Serialize(view, FitJsonOptions);
+        return Back(p, jobId);
+    }
+
+    private static readonly JsonSerializerOptions FitJsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+    };
 
     /// <summary>The page numbers to show: the first, the last, and the current one with its neighbours; null marks a gap.</summary>
     public IReadOnlyList<int?> PageNumbers()
@@ -280,7 +337,10 @@ public sealed class IndexModel(IJobCatalogClient api, IJobArchiveClient archive)
         {
             text += ": " + note.Trim();
         }
-        text += ".";
+        if (!text.EndsWith('.') && !text.EndsWith('!') && !text.EndsWith('?'))
+        {
+            text += ".";
+        }
         if (result.AlreadyArchived > 0)
         {
             text += $" {result.AlreadyArchived} already archived (unchanged).";

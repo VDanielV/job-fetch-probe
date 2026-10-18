@@ -10,6 +10,7 @@
 @section Head {
     <script src="~/js/archive.js" defer></script>
     <script src="~/js/filter.js" defer></script>
+    <script src="~/js/fit.js" defer></script>
 }
 
 <header class="page-head">
@@ -196,7 +197,29 @@
             {
                 <h2>@Highlight.Html(job.Title ?? job.JobId, jobs.Terms)</h2>
                 <p class="where">@string.Join(" · ", new[] { job.Company, job.Location }.Where(s => !string.IsNullOrWhiteSpace(s)))</p>
-                <a class="button" href="@job.Url" target="_blank" rel="noopener noreferrer">Open the job page ↗</a>
+                <div class="pane-actions">
+                    <a class="button" href="@job.Url" target="_blank" rel="noopener noreferrer">Open the job page ↗</a>
+                    <form method="post" asp-page="/Index" asp-page-handler="Fit" class="fit-form" data-fit-form>
+                        <input type="hidden" name="jobId" value="@job.JobId" />
+                        <input type="hidden" name="p" value="@jobs.Page" />
+                        <partial name="_ListState" model="Model" />
+                        @if (string.IsNullOrWhiteSpace(job.Description))
+                        {
+                            <button type="submit" class="fit-button" disabled title="No description yet: the next acquisition reads it, then it can be scored.">✦ Check fit</button>
+                        }
+                        else
+                        {
+                            <button type="submit" class="fit-button" title="Score this job with the local model (F)">✦ Check fit <kbd>F</kbd></button>
+                        }
+                    </form>
+                </div>
+
+                <div class="fit-slot" data-fit-slot aria-live="polite">
+                    @if (Model.Fit is { } fit)
+                    {
+                        <partial name="_FitResult" model="fit" />
+                    }
+                </div>
 
                 <partial name="_ArchiveBox" model="Model" />
 

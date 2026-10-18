@@ -1,0 +1,44 @@
+@model JobFetchProbe.Web.Pages.FitView
+@* The score of the job in the pane, from POST api/JobFit. Not saved: it goes when another job is opened. *@
+@if (Model.Result is { } fit)
+{
+    <div class="fit-card @Model.Tone" data-fit-note="@Model.ArchiveNote" data-fit-job="@Model.JobId">
+        <div class="fit-top">
+            <span class="fit-decision @fit.Decision">@fit.Decision</span>
+            <span class="fit-score">@fit.Fit<small> / 100</small></span>
+            <span class="fit-meter" aria-hidden="true">
+                <i style="width:@(fit.Fit)%"></i>
+                <span class="fit-mark" style="left:40%"></span>
+                <span class="fit-mark" style="left:60%"></span>
+            </span>
+        </div>
+        <p class="fit-reason">
+            @if (fit.HardSkip)
+            {
+                <span class="fit-hard">Hard skip</span>
+            }
+            @fit.Reason
+        </p>
+        @if (fit.MissingInformation.Count > 0)
+        {
+            <p class="fit-missing-title">Not stated in the job</p>
+            <ul class="fit-missing">
+                @foreach (var item in fit.MissingInformation)
+                {
+                    <li>@item</li>
+                }
+            </ul>
+        }
+        <div class="fit-foot">
+            <span>Local model · @Model.Seconds s · not saved · the archive note below is filled in</span>
+            <button type="button" class="fit-again" data-fit-again>Check again</button>
+        </div>
+    </div>
+}
+else
+{
+    <div class="fit-card error" data-fit-job="@Model.JobId">
+        <b>Couldn't score this job.</b> @Model.Error
+        <button type="button" class="fit-again" data-fit-again>Try again</button>
+    </div>
+}

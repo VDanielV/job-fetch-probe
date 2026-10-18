@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 //   /             all jobs, newest first, 25 per page       ← GET api/JobCatalog?page=&pageSize=
 //   /?job={id}    the same, with that job in the details pane ← GET api/JobCatalog/{jobId}
 //                 archive the ticked jobs, or the one in the pane ← POST api/ArchivedJobs (?archived=1 shows them)
+//                 "Check fit" scores the job in the pane with the local model ← POST api/JobFit (not stored)
 //   /acquire      explains the acquisition and starts it   ← POST api/JobFetcher
 //                 (?since=…) its progress, refreshed every 15 s  ← GET api/Journal/runs, api/Journal/<step>/runs/{id}
 //   /jobs/{id}    old address of a job: redirects to /?job={id}
@@ -23,12 +24,18 @@ builder.Services.AddOptions<JobCatalogApiSettings>()
 
 builder.Services.AddSingleton(TimeProvider.System);
 
-// Typed clients through IHttpClientFactory: pooled handlers, nothing to dispose. All five call the same API.
+// Typed clients through IHttpClientFactory: pooled handlers, nothing to dispose. All six call the same API.
 // Chat waits longer than the others: one local answer can take most of a minute, and the catalog must still fail fast.
 builder.Services.AddHttpClient<IJobCatalogClient, JobCatalogClient>(ConfigureApi);
 builder.Services.AddHttpClient<IJobFetcherClient, JobFetcherClient>(ConfigureApi);
 builder.Services.AddHttpClient<IJournalClient, JournalClient>(ConfigureApi);
 builder.Services.AddHttpClient<IJobArchiveClient, JobArchiveClient>(ConfigureApi);
+// Job fit waits as long as chat: the local model scores one job in up to about two minutes.
+builder.Services.AddHttpClient<IJobFitClient, JobFitClient>((services, client) =>
+{
+    ConfigureApi(services, client);
+    client.Timeout = TimeSpan.FromSeconds(JobFitClient.TimeoutSeconds);
+});
 builder.Services.AddHttpClient<IChatApiClient, ChatApiClient>((services, client) =>
 {
     ConfigureApi(services, client);
