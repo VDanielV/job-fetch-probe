@@ -8,7 +8,7 @@ public interface IJobRepository
 {
     /// <summary>
     /// Every job without a description that is worth trying: not read yet, or refused / failed before.
-    /// Jobs the site reported as gone are left out. Never-tried jobs come first, oldest first.
+    /// Jobs the site reported as gone, archived jobs and jobs applied to are left out. Never-tried jobs come first, oldest first.
     /// </summary>
     Task<IReadOnlyList<JobListing>> GetUnreadAsync(CancellationToken ct = default);
 

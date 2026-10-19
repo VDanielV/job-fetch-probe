@@ -10,4 +10,10 @@ public sealed class JobCatalogApiSettings
 
     /// <summary>How long one call may take before the page reports the API as not reachable.</summary>
     public int TimeoutSeconds { get; set; } = 10;
+
+    /// <summary>
+    /// How long a call that waits for the local model (Check fit, Chat) may take. Keep it a little longer than the API's
+    /// Ollama:TimeoutSeconds, so the API's own answer (a score, or why there is none) arrives first.
+    /// </summary>
+    public int LocalModelTimeoutSeconds { get; set; } = 250;
 }

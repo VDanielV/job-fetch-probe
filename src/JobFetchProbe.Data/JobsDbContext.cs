@@ -1,5 +1,7 @@
+using JobFetchProbe.Data.Applications.Entities;
 using JobFetchProbe.Data.Archive.Entities;
 using JobFetchProbe.Data.Entities;
+using JobFetchProbe.Data.Fit.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace JobFetchProbe.Data;
@@ -14,10 +16,14 @@ public sealed class JobsDbContext(DbContextOptions<JobsDbContext> options) : DbC
     public DbSet<ListingRow> Listings => Set<ListingRow>();
     public DbSet<ListingJobRow> ListingJobs => Set<ListingJobRow>();
     public DbSet<ArchivedJobRow> ArchivedJobs => Set<ArchivedJobRow>();
+    public DbSet<ApplicationRow> Applications => Set<ApplicationRow>();
+    public DbSet<ApplicationNoteRow> ApplicationNotes => Set<ApplicationNoteRow>();
+    public DbSet<JobFitAssessmentRow> JobFitAssessments => Set<JobFitAssessmentRow>();
 
     /// <summary>
     /// Each table is configured in its own class: Configurations for the jobs and listings, Journal/Configurations for
-    /// the journal of the two steps, Archive/Configurations for the archived jobs.
+    /// the journal of the two steps, Archive/Configurations for the archived jobs, Applications/Configurations for the
+    /// jobs applied to, Fit/Configurations for the fit assessments.
     /// </summary>
     protected override void OnModelCreating(ModelBuilder model) =>
         model.ApplyConfigurationsFromAssembly(typeof(JobsDbContext).Assembly);

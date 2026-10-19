@@ -11,6 +11,7 @@
     <script src="~/js/archive.js" defer></script>
     <script src="~/js/filter.js" defer></script>
     <script src="~/js/fit.js" defer></script>
+    <script src="~/js/applied.js" defer></script>
 }
 
 <header class="page-head">
@@ -46,6 +47,25 @@
     <div class="overview-banner"><partial name="_Banner" model="banner" /></div>
 }
 
+@if (Model.Applied is { } applied)
+{
+    <div class="overview-banner">
+        <div class="banner ok" role="status" data-applied-line>
+            <span aria-hidden="true">✓</span>
+            <div>
+                <b class="inline">Applied:</b> @applied.Title.@(applied.FollowUp is not null ? $" Follow up from {applied.FollowUp}." : "")
+                <form method="post" asp-page="/Index" asp-page-handler="UndoApply" class="inline-form">
+                    <input type="hidden" name="jobId" value="@applied.JobId" />
+                    <input type="hidden" name="p" value="@(jobs?.Page ?? 1)" />
+                    <partial name="_ListState" model="Model" />
+                    <button type="submit" class="link-button">Undo</button>
+                </form>
+                · <a asp-page="/Applications" asp-route-job="@applied.JobId">Open in Applications</a>
+            </div>
+        </div>
+    </div>
+}
+
 @if (jobs is null)
 {
     <div class="content"><p class="note">@Model.Unavailable</p></div>
@@ -64,7 +84,7 @@
             <div class="table-scroll">
                 <table>
                     <thead>
-                        <tr><th class="pick"><input type="checkbox" aria-label="Tick every job on this page" data-archive-all /></th><th>Title</th><th>Company</th><th class="col-location">Location</th><th class="col-posted">Posted</th><th class="status-col">Status</th></tr>
+                        <tr><th class="pick"><input type="checkbox" aria-label="Tick every job on this page" data-archive-all /></th><th>Title</th><th class="col-fit"><a href="@Model.Link(1, Model.SelectedId, sort: Model.Sort == JobFetchProbe.Models.Filter.JobSort.Fit ? JobFetchProbe.Models.Filter.JobSort.Newest : JobFetchProbe.Models.Filter.JobSort.Fit)" title="Sort by the best fit (or back to newest)">Fit@(Model.Sort == JobFetchProbe.Models.Filter.JobSort.Fit ? " ↓" : "")</a></th><th>Company</th><th class="col-location">Location</th><th class="col-posted">Posted</th><th class="status-col">Status</th></tr>
                     </thead>
                     <tbody>
                         @foreach (var job in jobs.Jobs)
@@ -88,6 +108,7 @@
                                         <span class="snippet">in the description: “@Highlight.Html(job.Snippet, jobs.Terms)”</span>
                                     }
                                 </td>
+                                <td class="col-fit"><partial name="_FitCell" model="job.Fit" /></td>
                                 <td>@job.Company</td>
                                 <td class="muted col-location">
                                     @if (job.Place is not null)
@@ -113,7 +134,7 @@
                         }
                         @if (jobs.Jobs.Count == 0 && Model.AnyFilter)
                         {
-                            <tr class="empty"><td colspan="6">No @(Model.ShowArchived ? "job" : "job to review") matches @(Model.Filtering ? "“" + Model.Query + "”" : "these chips")@(Model.Filtering && (Model.Places.Count > 0 || Model.Modes.Count > 0) ? " with these chips" : ""). <a href="@Model.Link(1, null, clearAll: true)">Clear the filters</a></td></tr>
+                            <tr class="empty"><td colspan="7">No @(Model.ShowArchived ? "job" : "job to review") matches @(Model.Filtering ? "“" + Model.Query + "”" : "these chips")@(Model.Filtering && (Model.Places.Count > 0 || Model.Modes.Count > 0) ? " with these chips" : ""). <a href="@Model.Link(1, null, clearAll: true)">Clear the filters</a></td></tr>
                         }
                     </tbody>
                 </table>
@@ -199,6 +220,16 @@
                 <p class="where">@string.Join(" · ", new[] { job.Company, job.Location }.Where(s => !string.IsNullOrWhiteSpace(s)))</p>
                 <div class="pane-actions">
                     <a class="button" href="@job.Url" target="_blank" rel="noopener noreferrer">Open the job page ↗</a>
+                    @if (job.Archive is null)
+                    {
+                        <form method="post" asp-page="/Index" asp-page-handler="Apply" class="apply-form">
+                            <input type="hidden" name="jobId" value="@job.JobId" />
+                            <input type="hidden" name="index" value="@Model.PositionOf(job.JobId)" />
+                            <input type="hidden" name="p" value="@jobs.Page" />
+                            <partial name="_ListState" model="Model" />
+                            <button type="submit" class="apply-button" title="You applied on the job's page: move it to Applications (A)" data-apply-button>✓ I applied <kbd>A</kbd></button>
+                        </form>
+                    }
                     <form method="post" asp-page="/Index" asp-page-handler="Fit" class="fit-form" data-fit-form>
                         <input type="hidden" name="jobId" value="@job.JobId" />
                         <input type="hidden" name="p" value="@jobs.Page" />

@@ -23,6 +23,7 @@ public sealed class JobCatalogController(IJobRetriever jobs) : ControllerBase
     /// <param name="scope">Where the filter looks: all (title and description, the default) or title.</param>
     /// <param name="places">City chips to list, repeatable: place=valencia&amp;place=spain ("other" for the rest).</param>
     /// <param name="modes">Work modes to list, repeatable: remote, hybrid, onsite, notstated.</param>
+    /// <param name="sort">Newest (the default) or Fit: the best latest fit first, jobs never scored last.</param>
     /// <remarks>GET api/JobCatalog?page=1&amp;pageSize=25&amp;includeArchived=false&amp;q=.net -java&amp;in=all</remarks>
     [HttpGet]
     [ProducesResponseType<JobSummaryPage>(StatusCodes.Status200OK)]
@@ -36,9 +37,10 @@ public sealed class JobCatalogController(IJobRetriever jobs) : ControllerBase
         [FromQuery(Name = "in")] FilterScope scope = FilterScope.All,
         [FromQuery(Name = "place")] string[]? places = null,
         [FromQuery(Name = "mode")] string[]? modes = null,
+        [FromQuery] JobSort sort = JobSort.Newest,
         CancellationToken ct = default)
     {
-        return await jobs.GetPageAsync(page, pageSize, includeArchived, q, scope, places, modes, ct);
+        return await jobs.GetPageAsync(page, pageSize, includeArchived, q, scope, places, modes, sort, ct);
     }
 
     /// <summary>One job: its details, description and status.</summary>

@@ -16,7 +16,8 @@ public interface IJobCatalogClient
     /// </summary>
     Task<JobSummaryPage> GetPageAsync(
         int page, int pageSize, bool includeArchived = false, string? query = null, FilterScope scope = FilterScope.All,
-        IReadOnlyList<string>? places = null, IReadOnlyList<string>? modes = null, CancellationToken ct = default);
+        IReadOnlyList<string>? places = null, IReadOnlyList<string>? modes = null, JobSort sort = JobSort.Newest,
+        CancellationToken ct = default);
 
     /// <summary>GET api/JobCatalog/{jobId}: one job in full, or null if the API answers 404.</summary>
     Task<StoredJob?> GetJobAsync(string jobId, CancellationToken ct = default);

@@ -6,12 +6,10 @@ namespace JobFetchProbe.Web.Api;
 
 /// <summary>
 /// Typed HTTP client for the API's JobFit controller. Same API address as the catalog. Its own time-out is
-/// <see cref="TimeoutSeconds"/>, a little longer than the API's 120 seconds for Ollama, so the API's own answer arrives.
+/// JobCatalogApi:LocalModelTimeoutSeconds, a little longer than the API's Ollama:TimeoutSeconds, so the API's own answer arrives.
 /// </summary>
 public sealed class JobFitClient(HttpClient http) : IJobFitClient
 {
-    public const int TimeoutSeconds = 130;
-
     private const string Route = "api/JobFit";
 
     public async Task<JobFitResult> AssessAsync(string jobId, CancellationToken ct = default)
@@ -44,6 +42,17 @@ public sealed class JobFitClient(HttpClient http) : IJobFitClient
             throw new InvalidOperationException("The API returned an empty answer.");
         }
         return result;
+    }
+
+    public async Task<JobFitHistory?> GetHistoryAsync(string jobId, CancellationToken ct = default)
+    {
+        using var response = await ApiCall.SendAsync(http, () => http.GetAsync($"{Route}/{Uri.EscapeDataString(jobId)}", ct), ct);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+        await ApiCall.EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<JobFitHistory>(ApiJson.Options, ct);
     }
 
     private static async Task<string> ReadValidationMessageAsync(HttpResponseMessage response, CancellationToken ct)

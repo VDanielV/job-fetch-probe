@@ -6,12 +6,10 @@ namespace JobFetchProbe.Web.Api;
 
 /// <summary>
 /// Typed HTTP client for the API's Chat controller. Same API address as the catalog. Its own time-out is
-/// <see cref="TimeoutSeconds"/>, longer than the catalog's, because one local answer can take most of a minute.
+/// JobCatalogApi:LocalModelTimeoutSeconds, longer than the catalog's, because one local answer can take minutes.
 /// </summary>
 public sealed class ChatApiClient(HttpClient http) : IChatApiClient
 {
-    public const int TimeoutSeconds = 130;
-
     private const string Route = "api/Chat";
 
     public async Task<ChatResponse> SendAsync(ChatRequest request, CancellationToken ct = default)

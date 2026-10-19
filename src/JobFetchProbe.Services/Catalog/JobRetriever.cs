@@ -20,7 +20,8 @@ public sealed class JobRetriever(IJobCatalog catalog) : IJobRetriever
 
     public async Task<JobSummaryPage> GetPageAsync(
         int page, int pageSize, bool includeArchived = false, string? query = null, FilterScope scope = FilterScope.All,
-        IReadOnlyList<string>? places = null, IReadOnlyList<string>? modes = null, CancellationToken ct = default)
+        IReadOnlyList<string>? places = null, IReadOnlyList<string>? modes = null, JobSort sort = JobSort.Newest,
+        CancellationToken ct = default)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(page, 1);
         ArgumentOutOfRangeException.ThrowIfLessThan(pageSize, 1);
@@ -100,6 +101,13 @@ public sealed class JobRetriever(IJobCatalog catalog) : IJobRetriever
             .ToList();
 
         var matches = jobs.Where(j => j.TextMatches && PlaceOk(j) && ModeOk(j)).ToList();
+        if (sort == JobSort.Fit)
+        {
+            // Best fit first; jobs never assessed last. The sort is stable, so ties keep the newest-first order.
+            matches = matches.OrderBy(j => j.Candidate.Summary.Fit is null ? 1 : 0)
+                .ThenByDescending(j => j.Candidate.Summary.Fit?.Fit ?? 0)
+                .ToList();
+        }
         var pages = Math.Max(1, (matches.Count + pageSize - 1) / pageSize);
         page = Math.Clamp(page, 1, pages);
         var rows = new List<JobSummary>();

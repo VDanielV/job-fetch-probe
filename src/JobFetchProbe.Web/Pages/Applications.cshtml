@@ -1,0 +1,362 @@
+@page "/applications"
+@model ApplicationsModel
+@using JobFetchProbe.Models.Applications
+@{
+    ViewData["Title"] = Model.Selected?.Summary.Title ?? "Applications";
+    ViewData["Nav"] = "Applications";
+    var list = Model.List;
+    var hasPane = Model.SelectedId is not null && list is not null;
+}
+
+@section Head {
+    <script src="~/js/applications.js" defer></script>
+    <script src="~/js/fit.js" defer></script>
+}
+
+<header class="page-head">
+    <div>
+        <h1>
+            Applications
+            @if (list is not null)
+            {
+                if (Model.ShowClosed)
+                {
+                    <span class="chip count">@list.Closed closed</span>
+                }
+                else
+                {
+                    <span class="chip count">@list.Open open@(list.Flagged == 1 ? " · 1 needs a follow-up" : list.Flagged > 1 ? $" · {list.Flagged} need a follow-up" : "")</span>
+                }
+            }
+        </h1>
+        <p>The jobs you applied to. Follow up after a week; close them when they are over, and they leave this list.</p>
+    </div>
+    @if (list is not null)
+    {
+        <a class="show-archived" href="@Model.Link(1, null, closed: !Model.ShowClosed)"
+           role="checkbox" aria-checked="@(Model.ShowClosed ? "true" : "false")">
+            <span class="box @(Model.ShowClosed ? "on" : null)" aria-hidden="true"></span>Show closed (@list.Closed)
+        </a>
+    }
+</header>
+
+@if (Model.Banner is { } banner)
+{
+    <div class="overview-banner">
+        <div class="banner @banner.Kind" role="status">
+            <span aria-hidden="true">@banner.Icon</span>
+            <div>
+                <b class="inline">@banner.Title</b>@banner.Text
+                @if (Model.UndoClose is { } undo)
+                {
+                    <form method="post" asp-page-handler="Restore" class="inline-form">
+                        <input type="hidden" name="jobId" value="@undo.JobId" />
+                        <input type="hidden" name="previous" value="@undo.Previous" />
+                        <partial name="_ApplicationsState" model="Model" />
+                        <button type="submit" class="link-button">Undo</button>
+                    </form>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@if (list is null)
+{
+    <div class="content"><p class="note">@Model.Unavailable</p></div>
+    return;
+}
+
+<div class="workspace @(hasPane ? "has-pane" : null)">
+    <section class="list">
+        <div class="chip-row app-chips">
+            <div class="filter-scope sort-switch" role="group" aria-label="Order">
+                <span class="sort-label">Sort</span>
+                <a class="@(Model.Sort == ApplicationSort.FollowUp ? "on" : null)" href="@Model.Link(1, Model.SelectedId, sort: ApplicationSort.FollowUp)">Follow-up first</a>
+                <a class="@(Model.Sort == ApplicationSort.Fit ? "on" : null)" href="@Model.Link(1, Model.SelectedId, sort: ApplicationSort.Fit)">Best fit</a>
+            </div>
+            @if (Model.ShowClosed)
+            {
+                <a class="fchip @(Model.Stage is null ? "on" : null)" href="@Model.Link(1, Model.SelectedId, allChips: true)">All closed <i>@list.Closed</i></a>
+                @foreach (var stage in ApplicationStageText.Closed)
+                {
+                    <a class="fchip @(Model.Stage == stage ? "on" : null)" href="@Model.Link(1, Model.SelectedId, stage: stage)">@ApplicationStageText.Label(stage) <i>@Model.CountOf(stage)</i></a>
+                }
+            }
+            else
+            {
+                <a class="fchip @(Model.Stage is null && !Model.OnlyFlagged ? "on" : null)" href="@Model.Link(1, Model.SelectedId, allChips: true)">All open <i>@list.Open</i></a>
+                <a class="fchip due @(Model.OnlyFlagged ? "on" : null)" href="@Model.Link(1, Model.SelectedId, flagged: true)">Needs follow-up <i>@list.Flagged</i></a>
+                @foreach (var stage in ApplicationStageText.Open)
+                {
+                    <a class="fchip @(Model.Stage == stage ? "on" : null)" href="@Model.Link(1, Model.SelectedId, stage: stage)">@ApplicationStageText.Label(stage) <i>@Model.CountOf(stage)</i></a>
+                }
+            }
+        </div>
+        <div class="card">
+            <div class="table-scroll">
+                <table class="applications">
+                    <thead>
+                        <tr><th>Title</th><th class="col-fit"><a href="@Model.Link(1, Model.SelectedId, sort: Model.Sort == ApplicationSort.Fit ? ApplicationSort.FollowUp : ApplicationSort.Fit)" title="Sort by the best fit (or back to follow-up first)">Fit@(Model.Sort == ApplicationSort.Fit ? " ↓" : "")</a></th><th>Company</th><th class="col-location">Location</th><th>Stage</th><th>Applied</th><th>Follow-up</th><th class="col-note">Last note</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var a in list.Applications)
+                        {
+                            var link = Model.Link(list.Page, a.JobId);
+                            var rowClass = string.Join(" ", new[] { a.JobId == Model.SelectedId ? "selected" : null, "flag-" + a.Flag, ApplicationStageText.IsClosed(a.Stage) ? "closed" : null }.Where(c => c is not null));
+                            <tr data-href="@link" class="@rowClass">
+                                <td class="title"><a href="@link">@(a.Title ?? a.JobId)</a></td>
+                                <td class="col-fit"><partial name="_FitCell" model="a.Fit" /></td>
+                                <td>@a.Company</td>
+                                <td class="muted col-location">@a.Location</td>
+                                <td><span class="stage @a.Stage">@ApplicationStageText.Label(a.Stage)</span></td>
+                                <td class="muted nowrap" title="@ApplicationsModel.When(a.AppliedAt)">@ApplicationStageText.Day(a.AppliedAt)<span class="age">@ApplicationStageText.Age(a.DaysSinceApplied)</span></td>
+                                <td class="nowrap">
+                                    @if (ApplicationStageText.Flag(a) is { } flag)
+                                    {
+                                        <span class="flag @a.Flag" title="@flag">@(a.Flag == FollowUpFlag.FollowUp ? "Follow up" : "No answer")</span>
+                                    }
+                                    else if (a.FlagFrom is { } from)
+                                    {
+                                        <span class="muted">from @ApplicationStageText.Day(from)</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="muted">—</span>
+                                    }
+                                </td>
+                                <td class="muted col-note">
+                                    @if (a.LastNote is { } note)
+                                    {
+                                        <span class="last-note">@(note.Length > 60 ? note[..60] + "…" : note)</span>
+                                    }
+                                    else
+                                    {
+                                        <span>—</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                        @if (list.Applications.Count == 0)
+                        {
+                            <tr class="empty"><td colspan="8">
+                                @if (Model.ShowClosed)
+                                {
+                                    <span>No closed application@(Model.Stage is { } s ? " with the stage " + ApplicationStageText.Label(s) : "").</span>
+                                }
+                                else if (list.Open == 0)
+                                {
+                                    <span>No applications yet. In the <a asp-page="/Index">Overview</a>, open a job and press <b>✓ I applied</b> (or the key A) once you have applied on its page.</span>
+                                }
+                                else
+                                {
+                                    <span>No open application matches this chip. <a href="@Model.Link(1, null, allChips: true)">Show all open</a></span>
+                                }
+                            </td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <footer class="pager">
+                @{
+                    var first = list.Total == 0 ? 0 : (list.Page - 1) * list.PageSize + 1;
+                    var lastShown = Math.Min(list.Page * list.PageSize, list.Total);
+                }
+                <span>Showing @first–@lastShown of @list.Total @(Model.ShowClosed ? "closed" : "open") applications</span>
+                <nav aria-label="Pages">
+                    @if (list.Page > 1)
+                    {
+                        <a href="@Model.Link(list.Page - 1, Model.SelectedId)" aria-label="Previous page">‹</a>
+                    }
+                    else
+                    {
+                        <span class="off">‹</span>
+                    }
+                    @foreach (var n in Model.PageNumbers())
+                    {
+                        if (n is null)
+                        {
+                            <span class="gap">…</span>
+                        }
+                        else if (n == list.Page)
+                        {
+                            <span class="current" aria-current="page">@n</span>
+                        }
+                        else
+                        {
+                            <a href="@Model.Link(n.Value, Model.SelectedId)">@n</a>
+                        }
+                    }
+                    @if (list.Page < list.TotalPages)
+                    {
+                        <a href="@Model.Link(list.Page + 1, Model.SelectedId)" aria-label="Next page">›</a>
+                    }
+                    else
+                    {
+                        <span class="off">›</span>
+                    }
+                </nav>
+            </footer>
+        </div>
+    </section>
+
+    @if (hasPane)
+    {
+        <div class="splitter" role="separator" aria-orientation="vertical" aria-label="Resize the details pane" tabindex="0" title="Drag to resize · double-click to reset"></div>
+        <aside class="detail" aria-label="Application" data-next="@Model.Neighbour(1)" data-previous="@Model.Neighbour(-1)">
+            <div class="detail-top">
+                <a class="close" href="@Model.Link(list.Page, null)" aria-label="Close the details" title="Close">✕</a>
+                <span>#<span class="detail-id">@Model.SelectedId</span></span>
+                @if (Model.Selected is { } sel)
+                {
+                    <span class="stage @sel.Summary.Stage">@ApplicationStageText.Label(sel.Summary.Stage)</span>
+                }
+            </div>
+
+            @if (Model.Selected is not { } app)
+            {
+                <p class="note">Job @Model.SelectedId is not in your applications.</p>
+            }
+            else
+            {
+                var a = app.Summary;
+                var index = Model.PositionOf(a.JobId);
+                <h2>@(a.Title ?? a.JobId)</h2>
+                <p class="where">@string.Join(" · ", new[] { a.Company, a.Location }.Where(s => !string.IsNullOrWhiteSpace(s))) · applied @ApplicationStageText.Day(a.AppliedAt) (@ApplicationStageText.Age(a.DaysSinceApplied)@(a.DaysSinceApplied > 1 ? " ago" : ""))</p>
+                @if (Model.Job is { } job)
+                {
+                    <div class="pane-actions">
+                        <a class="button" href="@job.Url" target="_blank" rel="noopener noreferrer">Open the job page ↗</a>
+                        <form method="post" asp-page-handler="Fit" class="fit-form" data-fit-form>
+                            <input type="hidden" name="jobId" value="@a.JobId" />
+                            <partial name="_ApplicationsState" model="Model" />
+                            @if (string.IsNullOrWhiteSpace(job.Description))
+                            {
+                                <button type="submit" class="fit-button" disabled title="No description was read for this job, so it cannot be scored.">✦ Check fit</button>
+                            }
+                            else
+                            {
+                                <button type="submit" class="fit-button" title="Score this job with the local model (F)">✦ Check fit <kbd>F</kbd></button>
+                            }
+                        </form>
+                    </div>
+                }
+                <div class="fit-slot" data-fit-slot aria-live="polite">
+                    @if (Model.Fit is { } fit)
+                    {
+                        <partial name="_FitResult" model="fit" />
+                    }
+                </div>
+
+                @if (ApplicationStageText.Flag(a) is { } flag)
+                {
+                    <div class="flag-line @a.Flag">
+                        @if (a.Flag == FollowUpFlag.FollowUp)
+                        {
+                            <span><b>@flag</b> since applying: contact them and ask for the status. Add a note when you do.</span>
+                        }
+                        else
+                        {
+                            <span><b>@flag</b> since applying, still no answer. Close it if it is over.</span>
+                            <form method="post" asp-page-handler="Stage" class="inline-form">
+                                <input type="hidden" name="jobId" value="@a.JobId" />
+                                <input type="hidden" name="index" value="@index" />
+                                <partial name="_ApplicationsState" model="Model" />
+                                <button type="submit" name="stage" value="NoAnswer" class="close-noanswer">Close as No answer</button>
+                            </form>
+                        }
+                    </div>
+                }
+
+                <form method="post" asp-page-handler="Stage" class="app-box stage-box">
+                    <input type="hidden" name="jobId" value="@a.JobId" />
+                    <input type="hidden" name="index" value="@index" />
+                    <partial name="_ApplicationsState" model="Model" />
+                    <div class="app-box-title">Stage</div>
+                    <div class="stage-buttons">
+                        @foreach (var stage in ApplicationStageText.Open.Concat(ApplicationStageText.Closed))
+                        {
+                            var css = string.Join(" ", new[] { stage == a.Stage ? "on" : null, ApplicationStageText.IsClosed(stage) ? "closing" : null }.Where(c => c is not null));
+                            <button type="submit" name="stage" value="@stage" class="@css" aria-pressed="@(stage == a.Stage ? "true" : "false")">@ApplicationStageText.Label(stage)</button>
+                        }
+                    </div>
+                </form>
+
+                <div class="app-box notes-box">
+                    <div class="app-box-title">Notes</div>
+                    <form method="post" asp-page-handler="Note" data-note-form>
+                        <input type="hidden" name="jobId" value="@a.JobId" />
+                        <partial name="_ApplicationsState" model="Model" />
+                        <label class="visually-hidden" for="note-text">Note</label>
+                        <textarea id="note-text" name="text" maxlength="2000" rows="3" placeholder="Add a note: a call, an email, what to prepare…">@Model.NoteDraft</textarea>
+                        <div class="note-actions"><span class="muted">Ctrl+Enter adds it, dated now</span><button type="submit" class="button small">Add note</button></div>
+                    </form>
+                    <ol class="timeline">
+                        @foreach (var line in app.Notes)
+                        {
+                            <li class="@line.Kind">
+                                <span class="when">@ApplicationsModel.When(line.At)</span>
+                                <span class="what">@if (line.Kind != ApplicationNoteKind.Note)
+                                    {
+                                        <span class="kind">@(line.Kind == ApplicationNoteKind.Stage ? "Stage" : "Applied")</span>
+                                    }<span class="text">@line.Text</span></span>
+                            </li>
+                        }
+                    </ol>
+                </div>
+
+                @if (Model.UndoWarning > 0)
+                {
+                    <div class="undo-warning" role="alert">
+                        <b>This application has @(Model.UndoWarning == 1 ? "1 note" : $"{Model.UndoWarning} notes").</b>
+                        Moving it back to the Overview deletes the application and @(Model.UndoWarning == 1 ? "that note" : "those notes") too.
+                        <form method="post" asp-page-handler="Undo" class="inline-form">
+                            <input type="hidden" name="jobId" value="@a.JobId" />
+                            <input type="hidden" name="index" value="@index" />
+                            <input type="hidden" name="withNotes" value="1" />
+                            <partial name="_ApplicationsState" model="Model" />
+                            <button type="submit" class="danger">Delete with notes</button>
+                        </form>
+                        <a class="button small" href="@Model.Link(list.Page, a.JobId)">Cancel</a>
+                    </div>
+                }
+                else
+                {
+                    <form method="post" asp-page-handler="Undo" class="undo-form">
+                        <input type="hidden" name="jobId" value="@a.JobId" />
+                        <input type="hidden" name="index" value="@index" />
+                        <partial name="_ApplicationsState" model="Model" />
+                        Not applied after all? <button type="submit" class="link-button">Move back to the Overview</button>
+                    </form>
+                }
+
+                @if (Model.Job is { } stored)
+                {
+                    <dl class="facts">
+                        @if (stored.Posted is not null)
+                        {
+                            <div><dt>Posted</dt><dd>@stored.Posted</dd></div>
+                        }
+                        @if (stored.EmploymentType is not null)
+                        {
+                            <div><dt>Employment type</dt><dd>@stored.EmploymentType</dd></div>
+                        }
+                        @foreach (var detail in stored.Details)
+                        {
+                            <div><dt>@detail.Label</dt><dd>@detail.Value</dd></div>
+                        }
+                    </dl>
+                    <h3>Description</h3>
+                    @if (string.IsNullOrWhiteSpace(stored.Description))
+                    {
+                        <p class="note">No description was read for this job.</p>
+                    }
+                    else
+                    {
+                        <div class="description">@stored.Description</div>
+                    }
+                }
+            }
+        </aside>
+    }
+</div>

@@ -26,6 +26,10 @@
         {
             <input type="hidden" name="mode" value="@mode" />
         }
+        @if (Model.Sort == JobSort.Fit)
+        {
+            <input type="hidden" name="sort" value="fit" />
+        }
         <span class="filter-icon" aria-hidden="true">⌕</span>
         <label class="visually-hidden" for="filter-q">Filter the jobs</label>
         <input id="filter-q" name="q" value="@Model.Query" placeholder="Filter: words, -word, &quot;a phrase&quot;   ( / )" autocomplete="off" data-filter-q />
@@ -37,6 +41,11 @@
     <div class="filter-scope" role="group" aria-label="Where to look">
         <a class="@(Model.Scope == FilterScope.Title ? "on" : null)" href="@Model.Link(1, Model.SelectedId, scope: FilterScope.Title)" data-filter-scope="title">Title</a>
         <a class="@(Model.Scope == FilterScope.All ? "on" : null)" href="@Model.Link(1, Model.SelectedId, scope: FilterScope.All)" data-filter-scope="all">Title + description</a>
+    </div>
+    <div class="filter-scope sort-switch" role="group" aria-label="Order">
+        <span class="sort-label">Sort</span>
+        <a class="@(Model.Sort == JobSort.Newest ? "on" : null)" href="@Model.Link(1, Model.SelectedId, sort: JobSort.Newest)">Newest</a>
+        <a class="@(Model.Sort == JobSort.Fit ? "on" : null)" href="@Model.Link(1, Model.SelectedId, sort: JobSort.Fit)">Best fit</a>
     </div>
     @if (Model.AnyFilter)
     {

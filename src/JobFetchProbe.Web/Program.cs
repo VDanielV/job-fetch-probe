@@ -5,7 +5,11 @@ using Microsoft.Extensions.Options;
 //   /             all jobs, newest first, 25 per page       ← GET api/JobCatalog?page=&pageSize=
 //   /?job={id}    the same, with that job in the details pane ← GET api/JobCatalog/{jobId}
 //                 archive the ticked jobs, or the one in the pane ← POST api/ArchivedJobs (?archived=1 shows them)
-//                 "Check fit" scores the job in the pane with the local model ← POST api/JobFit (not stored)
+//                 "Check fit" scores the job in the pane with the local model ← POST api/JobFit (kept: GET api/JobFit/{id})
+//                 ?sort=fit lists the best latest fit first
+//                 "I applied" moves the job in the pane to Applications ← POST api/Applications (Undo: DELETE)
+//   /applications the jobs applied to: stage, follow-up flags, notes ← GET/PUT/POST/DELETE api/Applications
+//                 (?closed=1 the closed ones; the menu shows the open and flagged counts ← GET api/Applications/summary)
 //   /acquire      explains the acquisition and starts it   ← POST api/JobFetcher
 //                 (?since=…) its progress, refreshed every 15 s  ← GET api/Journal/runs, api/Journal/<step>/runs/{id}
 //   /jobs/{id}    old address of a job: redirects to /?job={id}
@@ -20,26 +24,29 @@ builder.Services.AddOptions<JobCatalogApiSettings>()
     .Bind(builder.Configuration.GetSection(JobCatalogApiSettings.SectionName))
     .Validate(s => Uri.TryCreate(s.BaseUrl, UriKind.Absolute, out _), "JobCatalogApi:BaseUrl must be an absolute URL")
     .Validate(s => s.TimeoutSeconds is >= 1 and <= 120, "JobCatalogApi:TimeoutSeconds must be 1-120")
+    .Validate(s => s.LocalModelTimeoutSeconds is >= 1 and <= 900, "JobCatalogApi:LocalModelTimeoutSeconds must be 1-900")
     .ValidateOnStart();
 
 builder.Services.AddSingleton(TimeProvider.System);
 
-// Typed clients through IHttpClientFactory: pooled handlers, nothing to dispose. All six call the same API.
-// Chat waits longer than the others: one local answer can take most of a minute, and the catalog must still fail fast.
+// Typed clients through IHttpClientFactory: pooled handlers, nothing to dispose. All seven call the same API.
+// Chat and job fit wait longer than the others (below): one local answer can take minutes, and the catalog must still fail fast.
 builder.Services.AddHttpClient<IJobCatalogClient, JobCatalogClient>(ConfigureApi);
 builder.Services.AddHttpClient<IJobFetcherClient, JobFetcherClient>(ConfigureApi);
 builder.Services.AddHttpClient<IJournalClient, JournalClient>(ConfigureApi);
 builder.Services.AddHttpClient<IJobArchiveClient, JobArchiveClient>(ConfigureApi);
-// Job fit waits as long as chat: the local model scores one job in up to about two minutes.
+builder.Services.AddHttpClient<IApplicationClient, ApplicationClient>(ConfigureApi);
+// Job fit and chat wait for the local model: JobCatalogApi:LocalModelTimeoutSeconds, a little longer than the API's
+// Ollama:TimeoutSeconds.
 builder.Services.AddHttpClient<IJobFitClient, JobFitClient>((services, client) =>
 {
     ConfigureApi(services, client);
-    client.Timeout = TimeSpan.FromSeconds(JobFitClient.TimeoutSeconds);
+    client.Timeout = LocalModelTimeout(services);
 });
 builder.Services.AddHttpClient<IChatApiClient, ChatApiClient>((services, client) =>
 {
     ConfigureApi(services, client);
-    client.Timeout = TimeSpan.FromSeconds(ChatApiClient.TimeoutSeconds);
+    client.Timeout = LocalModelTimeout(services);
 });
 
 var app = builder.Build();
@@ -53,4 +60,10 @@ static void ConfigureApi(IServiceProvider services, HttpClient client)
     client.BaseAddress = new Uri(s.BaseUrl.TrimEnd('/') + "/");
     client.Timeout = TimeSpan.FromSeconds(s.TimeoutSeconds);
     client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+}
+
+static TimeSpan LocalModelTimeout(IServiceProvider services)
+{
+    var s = services.GetRequiredService<IOptions<JobCatalogApiSettings>>().Value;
+    return TimeSpan.FromSeconds(s.LocalModelTimeoutSeconds);
 }

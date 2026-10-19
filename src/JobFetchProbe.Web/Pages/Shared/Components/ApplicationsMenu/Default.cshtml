@@ -1,0 +1,13 @@
+@model JobFetchProbe.Web.ViewComponents.ApplicationsMenuView
+<a asp-page="/Applications" title="Applications" class="@(Model.Active ? "active" : null)" aria-current="@(Model.Active ? "page" : null)">
+    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 6.5h13v9h-13z"/><path d="M7.5 6.5V5a1.5 1.5 0 0 1 1.5-1.5h2A1.5 1.5 0 0 1 12.5 5v1.5"/><path d="m7.5 11 1.8 1.8 3.4-3.6"/></svg>
+    <span>Applications</span>
+    @if (Model.Summary is { } s)
+    {
+        <b class="menu-count" title="@s.Open open applications">@s.Open</b>
+        @if (s.Flagged > 0)
+        {
+            <b class="menu-count due" title="@s.Flagged need a follow-up">@s.Flagged</b>
+        }
+    }
+</a>

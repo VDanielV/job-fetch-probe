@@ -17,6 +17,59 @@ namespace JobFetchProbe.Data.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.13");
 
+            modelBuilder.Entity("JobFetchProbe.Data.Applications.Entities.ApplicationNoteRow", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("JobId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JobId", "At");
+
+                    b.ToTable("ApplicationNotes", (string)null);
+                });
+
+            modelBuilder.Entity("JobFetchProbe.Data.Applications.Entities.ApplicationRow", b =>
+                {
+                    b.Property<string>("JobId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("AppliedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Stage")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("StageChangedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("JobId");
+
+                    b.HasIndex("Stage");
+
+                    b.ToTable("Applications", (string)null);
+                });
+
             modelBuilder.Entity("JobFetchProbe.Data.Archive.Entities.ArchivedJobRow", b =>
                 {
                     b.Property<string>("JobId")
@@ -208,6 +261,54 @@ namespace JobFetchProbe.Data.Migrations
                     b.HasIndex("BatchId", "Position");
 
                     b.ToTable("ListingSources", (string)null);
+                });
+
+            modelBuilder.Entity("JobFetchProbe.Data.Fit.Entities.JobFitAssessmentRow", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("AssessedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Decision")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Fit")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("HardSkip")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("JobId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MissingInformation")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Model")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProfileVersion")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JobId", "AssessedAt");
+
+                    b.ToTable("JobFitAssessments", (string)null);
                 });
 
             modelBuilder.Entity("JobFetchProbe.Data.Journal.Entities.JobDetailsJournalEntryRow", b =>
@@ -426,6 +527,24 @@ namespace JobFetchProbe.Data.Migrations
                     b.ToTable("JobListingJournalRuns", (string)null);
                 });
 
+            modelBuilder.Entity("JobFetchProbe.Data.Applications.Entities.ApplicationNoteRow", b =>
+                {
+                    b.HasOne("JobFetchProbe.Data.Applications.Entities.ApplicationRow", null)
+                        .WithMany("Notes")
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("JobFetchProbe.Data.Applications.Entities.ApplicationRow", b =>
+                {
+                    b.HasOne("JobFetchProbe.Data.Entities.JobRow", null)
+                        .WithOne()
+                        .HasForeignKey("JobFetchProbe.Data.Applications.Entities.ApplicationRow", "JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("JobFetchProbe.Data.Archive.Entities.ArchivedJobRow", b =>
                 {
                     b.HasOne("JobFetchProbe.Data.Entities.JobRow", null)
@@ -468,6 +587,15 @@ namespace JobFetchProbe.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("JobFetchProbe.Data.Fit.Entities.JobFitAssessmentRow", b =>
+                {
+                    b.HasOne("JobFetchProbe.Data.Entities.JobRow", null)
+                        .WithMany()
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("JobFetchProbe.Data.Journal.Entities.JobDetailsJournalEntryRow", b =>
                 {
                     b.HasOne("JobFetchProbe.Data.Journal.Entities.JobDetailsJournalRunRow", null)
@@ -484,6 +612,11 @@ namespace JobFetchProbe.Data.Migrations
                         .HasForeignKey("RunId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("JobFetchProbe.Data.Applications.Entities.ApplicationRow", b =>
+                {
+                    b.Navigation("Notes");
                 });
 
             modelBuilder.Entity("JobFetchProbe.Data.Entities.JobRow", b =>

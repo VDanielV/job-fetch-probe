@@ -1,4 +1,5 @@
 using JobFetchProbe.Data.Archive;
+using JobFetchProbe.Data.Fit;
 using JobFetchProbe.Models.Archive;
 using JobFetchProbe.Models.Catalog;
 using JobFetchProbe.Models.Filter;
@@ -18,7 +19,8 @@ public sealed class SqliteJobCatalog(IDbContextFactory<JobsDbContext> contexts, 
     public async Task<JobSummaryPage> GetPageAsync(int page, int pageSize, bool includeArchived = false, CancellationToken ct = default)
     {
         await using var db = await contexts.CreateDbContextAsync(ct);
-        var query = db.Jobs.AsNoTracking();
+        // Jobs applied to are on the Applications page, never in the Overview.
+        var query = db.Jobs.AsNoTracking().Where(j => !db.Applications.Any(a => a.JobId == j.JobId));
         if (!includeArchived)
         {
             query = query.Where(j => !db.ArchivedJobs.Any(a => a.JobId == j.JobId));
@@ -59,7 +61,8 @@ public sealed class SqliteJobCatalog(IDbContextFactory<JobsDbContext> contexts, 
     public async Task<FilterCandidates> GetFilterCandidatesAsync(bool includeArchived = false, CancellationToken ct = default)
     {
         await using var db = await contexts.CreateDbContextAsync(ct);
-        var query = db.Jobs.AsNoTracking();
+        // Jobs applied to are on the Applications page, never in the Overview.
+        var query = db.Jobs.AsNoTracking().Where(j => !db.Applications.Any(a => a.JobId == j.JobId));
         if (!includeArchived)
         {
             query = query.Where(j => !db.ArchivedJobs.Any(a => a.JobId == j.JobId));
@@ -80,10 +83,13 @@ public sealed class SqliteJobCatalog(IDbContextFactory<JobsDbContext> contexts, 
             }
         }
         var archivedCount = await db.ArchivedJobs.CountAsync(ct);
+        var fits = await LatestFits.ReadAsync(db, null, ct);
 
         var jobs = rows
             .Select(r => new FilterCandidate(
-                new JobSummary(r.JobId, r.Title, r.Company, r.Location, r.Posted, r.Status, archived.GetValueOrDefault(r.JobId)),
+                new JobSummary(
+                    r.JobId, r.Title, r.Company, r.Location, r.Posted, r.Status, archived.GetValueOrDefault(r.JobId),
+                    Fit: fits.GetValueOrDefault(r.JobId)),
                 r.Description))
             .ToList();
         return new FilterCandidates(jobs, archivedCount);

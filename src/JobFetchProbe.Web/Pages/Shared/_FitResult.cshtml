@@ -1,5 +1,6 @@
 @model JobFetchProbe.Web.Pages.FitView
-@* The score of the job in the pane, from POST api/JobFit. Not saved: it goes when another job is opened. *@
+@using JobFetchProbe.Web.Pages
+@* The fit of the job in the pane: a score just made (POST api/JobFit), or the latest stored one, and the earlier ones. *@
 @if (Model.Result is { } fit)
 {
     <div class="fit-card @Model.Tone" data-fit-note="@Model.ArchiveNote" data-fit-job="@Model.JobId">
@@ -30,9 +31,47 @@
             </ul>
         }
         <div class="fit-foot">
-            <span>Local model · @Model.Seconds s · not saved · the archive note below is filled in</span>
+            <span>
+                @if (Model.Seconds >= 0)
+                {
+                    <text>Local model · @Model.Seconds s · saved</text>
+                }
+                else
+                {
+                    <text>Checked @IndexModel.When(fit.AssessedAt ?? DateTimeOffset.MinValue)@(Model.Model is not null ? " · " + Model.Model : "")</text>
+                }
+                @if (Model.OlderProfile)
+                {
+                    <span class="fit-older" title="Made with other Fit files (profile, policy or rubric) than the current ones">older profile</span>
+                }
+                @if (Model.ArchiveHint)
+                {
+                    <text> · the archive note below is filled in</text>
+                }
+            </span>
             <button type="button" class="fit-again" data-fit-again>Check again</button>
         </div>
+        @if (Model.Earlier is { Count: > 0 } earlier)
+        {
+            <details class="fit-earlier">
+                <summary>@(earlier.Count == 1 ? "1 earlier check" : $"{earlier.Count} earlier checks")</summary>
+                <ol>
+                    @foreach (var a in earlier)
+                    {
+                        <li>
+                            <span class="fit-earlier-when">@IndexModel.When(a.AssessedAt)</span>
+                            <span class="fit-num @FitView.ToneOf(a.Decision, a.HardSkip)">@a.Fit</span>
+                            <span class="fit-earlier-decision">@a.Decision@(a.HardSkip ? " · hard skip" : "")</span>
+                            @if (FitView.IsOlder(a, Model.CurrentProfile))
+                            {
+                                <span class="fit-older">older profile</span>
+                            }
+                            <span class="fit-earlier-reason">@a.Reason</span>
+                        </li>
+                    }
+                </ol>
+            </details>
+        }
     </div>
 }
 else

@@ -1,0 +1,11 @@
+@model JobFetchProbe.Models.Fit.FitScore?
+@using JobFetchProbe.Web.Pages
+@* The latest fit of a job in a table: a coloured number (struck through for a hard skip), or a dash when never scored. *@
+@if (Model is { } fit)
+{
+    <span class="fit-num @FitView.ToneOf(fit.Decision, fit.HardSkip)@(fit.HardSkip ? " hard" : "")" title="@fit.Decision@(fit.HardSkip ? " (hard skip)" : "") · checked @IndexModel.When(fit.AssessedAt)">@fit.Fit</span>
+}
+else
+{
+    <span class="fit-none" title="Not scored yet">—</span>
+}

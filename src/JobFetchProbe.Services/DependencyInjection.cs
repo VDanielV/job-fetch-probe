@@ -83,12 +83,14 @@ public static class DependencyInjection
     }
 
     /// <summary>
-    /// Scores one stored job (<see cref="IJobFitService"/>). Needs <see cref="AddJobRetriever"/>, an
-    /// <see cref="IFitDocuments"/>, and an <see cref="Abstractions.ILocalChatModel"/>. Transient, for the same reason as
-    /// <see cref="AddChat"/>.
+    /// Scores one stored job and keeps the score (<see cref="IJobFitService"/>). Needs <see cref="AddJobRetriever"/>, an
+    /// <see cref="IFitDocuments"/>, an <see cref="Abstractions.ILocalChatModel"/>, and an
+    /// <see cref="Abstractions.Fit.IJobFitAssessmentStore"/> from the data layer (<c>AddJobFitStore</c>). Transient, for the
+    /// same reason as <see cref="AddChat"/>.
     /// </summary>
     public static IServiceCollection AddJobFit(this IServiceCollection services)
     {
+        services.TryAddSingleton(TimeProvider.System);
         services.AddTransient<IJobFitService, JobFitService>();
         return services;
     }

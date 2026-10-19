@@ -15,7 +15,8 @@ public sealed class JobCatalogClient(HttpClient http) : IJobCatalogClient
 
     public async Task<JobSummaryPage> GetPageAsync(
         int page, int pageSize, bool includeArchived = false, string? query = null, FilterScope scope = FilterScope.All,
-        IReadOnlyList<string>? places = null, IReadOnlyList<string>? modes = null, CancellationToken ct = default)
+        IReadOnlyList<string>? places = null, IReadOnlyList<string>? modes = null, JobSort sort = JobSort.Newest,
+        CancellationToken ct = default)
     {
         var path = $"{Route}?page={page}&pageSize={pageSize}";
         if (includeArchived)
@@ -37,6 +38,10 @@ public sealed class JobCatalogClient(HttpClient http) : IJobCatalogClient
         foreach (var mode in modes ?? [])
         {
             path += "&mode=" + Uri.EscapeDataString(mode);
+        }
+        if (sort == JobSort.Fit)
+        {
+            path += "&sort=Fit";
         }
         using var response = await SendAsync(path, ct);
         await ThrowIfUnavailableAsync(response, ct);

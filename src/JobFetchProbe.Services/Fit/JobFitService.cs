@@ -1,13 +1,20 @@
 using System.Text.Json;
 using JobFetchProbe.Models.Fit;
 using JobFetchProbe.Services.Abstractions;
+using JobFetchProbe.Services.Abstractions.Fit;
 using JobFetchProbe.Services.Catalog;
 using JobFetchProbe.Services.Chat;
+using Microsoft.Extensions.Logging;
 
 namespace JobFetchProbe.Services.Fit;
 
-/// <summary>Loads one stored job, asks the local model for a JSON score, and checks the answer.</summary>
-public sealed class JobFitService(IJobRetriever jobs, IFitDocuments documents, ILocalChatModel model) : IJobFitService
+/// <summary>
+/// Loads one stored job, asks the local model for a JSON score, checks the answer, and keeps it
+/// (<see cref="IJobFitAssessmentStore"/>) with the model's name and the version of the Fit files.
+/// </summary>
+public sealed class JobFitService(
+    IJobRetriever jobs, IFitDocuments documents, ILocalChatModel model, IJobFitAssessmentStore assessments, TimeProvider time,
+    ILogger<JobFitService> logger) : IJobFitService
 {
     public async Task<JobFitResult?> AssessAsync(JobFitRequest request, CancellationToken ct = default)
     {
@@ -26,9 +33,55 @@ public sealed class JobFitService(IJobRetriever jobs, IFitDocuments documents, I
             throw new JobFitRequestException("description", "This job has no description yet, so it cannot be scored.");
         }
 
-        var message = JobFitPrompt.Build(documents.Load(), job);
+        var pack = documents.Load();
+        var message = JobFitPrompt.Build(pack, job);
         var answer = await model.CompleteJsonAsync(message, ct);
-        return Read(answer.Content);
+        var result = Read(answer.Content) with { AssessedAt = time.GetLocalNow() };
+        await KeepAsync(job.JobId, result, answer.Model, ProfileVersion.Of(pack), ct);
+        return result;
+    }
+
+    public async Task<JobFitHistory?> GetHistoryAsync(string jobId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(jobId))
+        {
+            return null;
+        }
+        var job = await jobs.GetJobAsync(jobId.Trim(), ct);
+        if (job is null)
+        {
+            return null;
+        }
+
+        string? current = null;
+        try
+        {
+            current = ProfileVersion.Of(documents.Load());
+        }
+        catch (InvalidOperationException)
+        {
+            // A Fit file is missing or empty: the history is still shown, without marking older profiles.
+        }
+        return new JobFitHistory(await assessments.GetAsync(job.JobId, ct), current);
+    }
+
+    /// <summary>
+    /// Stores the score. A failure to store is logged and the score is still returned: scoring is never lost because of
+    /// the store. A cancelled request stores nothing.
+    /// </summary>
+    private async Task KeepAsync(string jobId, JobFitResult result, string? modelName, string profileVersion, CancellationToken ct)
+    {
+        var assessment = new JobFitAssessment(
+            0, result.AssessedAt!.Value, result.Fit, result.Decision, result.HardSkip, result.Reason, result.MissingInformation,
+            modelName, profileVersion);
+        try
+        {
+            await assessments.AddAsync(jobId, assessment, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "The fit of job {JobId} could not be stored; it was still returned", jobId);
+        }
     }
 
     private static JobFitResult Read(string content)
