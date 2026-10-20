@@ -14,6 +14,8 @@ public interface ILocalChatModel
     /// </summary>
     Task<ChatResponse> CompleteAsync(string message, CancellationToken ct = default);
 
-    /// <summary>Same as <see cref="CompleteAsync"/>, and the model must answer with a JSON object.</summary>
-    Task<ChatResponse> CompleteJsonAsync(string message, CancellationToken ct = default);
+    /// <summary>
+    /// Same as <see cref="CompleteAsync"/>, and Ollama constrains the answer to <paramref name="jsonSchema"/>.
+    /// </summary>
+    Task<ChatResponse> CompleteJsonAsync(string message, string jsonSchema, CancellationToken ct = default);
 }

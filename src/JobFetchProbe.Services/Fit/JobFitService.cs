@@ -35,7 +35,7 @@ public sealed class JobFitService(
 
         var pack = documents.Load();
         var message = JobFitPrompt.Build(pack, job);
-        var answer = await model.CompleteJsonAsync(message, ct);
+        var answer = await model.CompleteJsonAsync(message, JobFitPrompt.ResponseSchema, ct);
         var result = Read(answer.Content) with { AssessedAt = time.GetLocalNow() };
         await KeepAsync(job.JobId, result, answer.Model, ProfileVersion.Of(pack), ct);
         return result;
@@ -102,7 +102,7 @@ public sealed class JobFitService(
 
             var fit = ReadFit(root);
             var reason = RequiredString(root, "reason");
-            var hardSkip = ReadBool(root, "hardSkip");
+            var hardSkip = ReadBool(root, "hardSkip") || HardSkipStack.Required(ReadLines(root, "mandatoryRequirements"));
             if (hardSkip)
             {
                 decision = JobFitDecision.Skip;
@@ -178,13 +178,23 @@ public sealed class JobFitService(
 
     private static IReadOnlyList<string> ReadMissing(JsonElement root)
     {
-        if (!TryProperty(root, "missingInformation", out var value))
+        return ReadLines(root, "missingInformation", requiredShape: true);
+    }
+
+    /// <summary>A string array from the model. A missing working list is empty. A present list that is not an array fails.</summary>
+    private static IReadOnlyList<string> ReadLines(JsonElement root, string name, bool requiredShape = false)
+    {
+        if (!TryProperty(root, name, out var value))
         {
             return [];
         }
         if (value.ValueKind != JsonValueKind.Array)
         {
-            throw new JsonException("missingInformation was not a list.");
+            if (!requiredShape)
+            {
+                return [];
+            }
+            throw new JsonException($"{name} was not a list.");
         }
 
         var items = new List<string>();
@@ -192,7 +202,7 @@ public sealed class JobFitService(
         {
             if (item.ValueKind != JsonValueKind.String)
             {
-                throw new JsonException("missingInformation contained something other than text.");
+                throw new JsonException($"{name} contained something other than text.");
             }
 
             var text = item.GetString()?.Trim();

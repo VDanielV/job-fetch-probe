@@ -18,6 +18,9 @@ public static class JobStatus
     /// <summary>The job page no longer exists (HTTP 404 or 410). Not tried again.</summary>
     public const string Gone = "Gone";
 
+    /// <summary>A historical or externally sourced job. It has no locally fetched job page.</summary>
+    public const string External = "External";
+
     /// <summary>The statuses step 2 tries: everything without a description that may still exist.</summary>
     public static readonly string[] ToRead = [Pending, Failed, Blocked];
 }

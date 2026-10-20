@@ -3,6 +3,7 @@ using System.Text.Json;
 using JobFetchProbe.Models.Chat;
 using JobFetchProbe.Services.Abstractions;
 using JobFetchProbe.Services.Chat;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace JobFetchProbe.Infrastructure.Ollama;
@@ -12,7 +13,7 @@ namespace JobFetchProbe.Infrastructure.Ollama;
 /// do not dispose it and do not create one here. One attempt. A refusal, a timeout, or an unreadable answer becomes
 /// <see cref="LocalChatUnavailableException"/>; the caller's own cancellation is left as it is.
 /// </summary>
-public sealed class OllamaChatClient(HttpClient http, IOptions<OllamaSettings> settings) : ILocalChatModel
+public sealed class OllamaChatClient(HttpClient http, IOptions<OllamaSettings> settings, ILogger<OllamaChatClient> logger) : ILocalChatModel
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -21,15 +22,32 @@ public sealed class OllamaChatClient(HttpClient http, IOptions<OllamaSettings> s
         return SendAsync(message, format: null, ct);
     }
 
-    public Task<ChatResponse> CompleteJsonAsync(string message, CancellationToken ct = default)
+    public Task<ChatResponse> CompleteJsonAsync(string message, string jsonSchema, CancellationToken ct = default)
     {
-        return SendAsync(message, format: "json", ct);
+        JsonElement format;
+        try
+        {
+            using var schema = JsonDocument.Parse(jsonSchema);
+            format = schema.RootElement.Clone();
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidOperationException("The JSON Schema supplied to Ollama is invalid.", ex);
+        }
+
+        return SendAsync(message, format, ct);
     }
 
-    private async Task<ChatResponse> SendAsync(string message, string? format, CancellationToken ct)
+    private async Task<ChatResponse> SendAsync(string message, JsonElement? format, CancellationToken ct)
     {
         var configured = settings.Value;
-        var body = new OllamaChatRequest(configured.Model, Stream: false, [new OllamaMessage("user", message)], format);
+        var body = new OllamaChatRequest(
+            configured.Model,
+            Stream: false,
+            [new OllamaMessage("user", message)],
+            new OllamaOptions(Temperature: 0, configured.ContextTokens, configured.MaxOutputTokens),
+            $"{configured.KeepAliveMinutes}m",
+            format);
 
         HttpResponseMessage response;
         try
@@ -74,6 +92,15 @@ public sealed class OllamaChatClient(HttpClient http, IOptions<OllamaSettings> s
             {
                 model = chat.Model.Trim();
             }
+            logger.LogInformation(
+                "Ollama {Model}: load {Load}s, read {PromptTokens} tokens in {Read}s, wrote {AnswerTokens} tokens in {Write}s\n{Answer}",
+                model,
+                Seconds(chat?.LoadDuration),
+                chat?.PromptEvalCount,
+                Seconds(chat?.PromptEvalDuration),
+                chat?.EvalCount,
+                Seconds(chat?.EvalDuration),
+                content.Trim());
             return new ChatResponse(content.Trim(), model);
         }
     }
@@ -85,6 +112,15 @@ public sealed class OllamaChatClient(HttpClient http, IOptions<OllamaSettings> s
             return settings.Value.BaseUrl;
         }
         return http.BaseAddress.GetLeftPart(UriPartial.Authority);
+    }
+
+    private static string Seconds(long? nanoseconds)
+    {
+        if (nanoseconds is null)
+        {
+            return "?";
+        }
+        return (nanoseconds.Value / 1_000_000_000d).ToString("0.0");
     }
 
     private static LocalChatUnavailableException Unavailable(string message, Exception? inner = null)

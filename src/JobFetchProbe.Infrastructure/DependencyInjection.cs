@@ -74,6 +74,9 @@ public static class DependencyInjection
             .Validate(s => Uri.TryCreate(s.BaseUrl, UriKind.Absolute, out _), "Ollama:BaseUrl must be an absolute URL")
             .Validate(s => !string.IsNullOrWhiteSpace(s.Model), "Ollama:Model is required")
             .Validate(s => s.TimeoutSeconds is >= 1 and <= 300, "Ollama:TimeoutSeconds must be 1-300")
+            .Validate(s => s.ContextTokens is >= 2048 and <= 32768, "Ollama:ContextTokens must be 2048-32768")
+            .Validate(s => s.MaxOutputTokens is >= 128 and <= 2048, "Ollama:MaxOutputTokens must be 128-2048")
+            .Validate(s => s.KeepAliveMinutes is >= 1 and <= 240, "Ollama:KeepAliveMinutes must be 1-240")
             .ValidateOnStart();
 
         services.AddHttpClient<ILocalChatModel, OllamaChatClient>((sp, client) =>
