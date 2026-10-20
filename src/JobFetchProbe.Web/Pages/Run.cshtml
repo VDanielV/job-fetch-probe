@@ -1,0 +1,84 @@
+@page "/runs/{id}"
+@model RunModel
+@{
+    var run = Model.Run;
+    ViewData["Title"] = run is null ? "Run" : "Run " + RunText.When(run.StartedAt);
+    ViewData["Nav"] = "Runs";
+}
+
+<header class="page-head">
+    <div>
+        <h1>
+            @if (run is null)
+            {
+                <span>Run</span>
+            }
+            else
+            {
+                <span>Run of @RunText.When(run.StartedAt)</span>
+                <span class="status @RunText.StateClass(run)">@RunText.State(run)</span>
+            }
+        </h1>
+        <p><a class="link" asp-page="/Runs">‹ All runs</a></p>
+    </div>
+</header>
+
+<div class="content">
+    @if (Model.Error is { } error)
+    {
+        <partial name="_ErrorPane" model="error" />
+    }
+    else if (run is null)
+    {
+        <p class="note">@Model.Unavailable</p>
+    }
+    else
+    {
+        <section class="progress-pane run-pane">
+            <div class="pp-head">
+                <h2>@run.Links job link@(run.Links == 1 ? "" : "s"): @run.New new, @run.Known already known</h2>
+                <small>
+                    @if (run.ListingId is not null)
+                    {
+                        <span>listing @run.ListingId</span>
+                    }
+                    @if (run.RunId is { } id)
+                    {
+                        <span> · journal: step 1 run @id@(run.DetailsRunId is { } d ? $", step 2 run {d}" : "")</span>
+                    }
+                </small>
+            </div>
+
+            @if (Model.View?.EndBanner is { } end)
+            {
+                <div class="pp-banner"><partial name="_Banner" model="end" /></div>
+            }
+            else if (!Model.HasJournal)
+            {
+                <div class="pp-banner"><partial name="_Banner" model="@(new PageBanner("busy", "Stored before the journal existed.", "Only the job links of this listing are known: not how step 2 went."))" /></div>
+            }
+
+            <nav class="tabs" aria-label="Run">
+                @if (Model.HasJournal)
+                {
+                    <a class="@(Model.Tab == RunModel.TabSummary ? "on" : null)" href="@Model.Link(RunModel.TabSummary)">Summary</a>
+                    <a class="@(Model.Tab == RunModel.TabRun ? "on" : null)" href="@Model.Link(RunModel.TabRun)">Whole run@(Model.View is { } v ? $" ({v.WholeRun.Count})" : "")</a>
+                }
+                <a class="@(Model.Tab == RunModel.TabLinks ? "on" : null)" href="@Model.Link(RunModel.TabLinks)">Job links (@run.Links)</a>
+            </nav>
+
+            @if (Model.Tab == RunModel.TabLinks)
+            {
+                <partial name="_RunJobLinks" model="Model" />
+            }
+            else if (Model.View is { } view && Model.Tab == RunModel.TabRun)
+            {
+                <partial name="_AcquireWholeRun" model="view" />
+            }
+            else if (Model.View is { } summary)
+            {
+                <partial name="_AcquireSummary" model="summary" />
+            }
+        </section>
+    }
+</div>

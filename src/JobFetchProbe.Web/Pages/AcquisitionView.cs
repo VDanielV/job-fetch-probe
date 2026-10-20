@@ -184,6 +184,49 @@ public sealed class AcquisitionView
         }
     }
 
+    private int? newJobs;
+    private int? knownJobs;
+
+    /// <summary>
+    /// The listing's jobs new to the database. From the journal by default (right for runs since 20 Oct 2026; older
+    /// journal rows counted jobs not on an earlier page); the Runs page gives the figures worked out from the data.
+    /// </summary>
+    public int NewJobs
+    {
+        get
+        {
+            if (newJobs is { } given)
+            {
+                return given;
+            }
+            return Listing?.NewJobs ?? 0;
+        }
+    }
+
+    /// <summary>The listing's jobs already in the database before the run.</summary>
+    public int KnownJobs
+    {
+        get
+        {
+            if (knownJobs is { } given)
+            {
+                return given;
+            }
+            if (Listing is null)
+            {
+                return 0;
+            }
+            return Math.Max(0, Listing.JobsStored - Listing.NewJobs);
+        }
+    }
+
+    /// <summary>Uses the new and known counts worked out from the listing (Runs page).</summary>
+    public void UseListingCounts(int isNew, int known)
+    {
+        newJobs = isNew;
+        knownJobs = known;
+    }
+
     /// <summary>Why the acquisition stopped early, in a few words; null unless it was stopped.</summary>
     public string? StopReason
     {
@@ -430,12 +473,23 @@ public sealed class AcquisitionView
         return lines.OrderBy(l => l.Step).ThenBy(l => l.Order).ToList();
     }
 
+    /// <summary>A page's job links; the entry's NewJobs counts those not on an earlier page of the same run.</summary>
+    private static string PageJobs(JobListingJournalEntry e)
+    {
+        var repeated = e.Jobs - e.NewJobs;
+        if (repeated > 0)
+        {
+            return $"{e.Jobs} jobs, {repeated} also on an earlier page";
+        }
+        return $"{e.Jobs} jobs";
+    }
+
     private static ActivityLine ListingLine(JobListingJournalEntry e)
     {
         switch (e.Outcome)
         {
             case JobListingJournalOutcome.Read:
-                return new ActivityLine(1, e.Id, e.At, "Page read", "Read", e.File, $"{e.Jobs} jobs, {e.NewJobs} new");
+                return new ActivityLine(1, e.Id, e.At, "Page read", "Read", e.File, PageJobs(e));
             case JobListingJournalOutcome.Kept:
                 return new ActivityLine(1, e.Id, e.At, "Page kept", "Failed", e.File, e.Message);
             case JobListingJournalOutcome.Archived:

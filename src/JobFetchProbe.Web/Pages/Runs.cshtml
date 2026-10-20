@@ -1,0 +1,98 @@
+@page
+@model RunsModel
+@{
+    ViewData["Title"] = "Runs";
+    ViewData["Nav"] = "Runs";
+    var list = Model.List;
+}
+
+<header class="page-head">
+    <div>
+        <h1>Runs</h1>
+        <p>Past acquisitions, newest first. Open one to see its summary, every step, and what happened to each job link.</p>
+    </div>
+    @if (list is not null)
+    {
+        <a class="show-archived" href="@Model.Link(1, !Model.ShowEmpty)" role="checkbox" aria-checked="@(Model.ShowEmpty ? "true" : "false")"
+           title="Runs that found no saved page and had nothing for step 2">
+            <span class="box @(Model.ShowEmpty ? "on" : null)" aria-hidden="true"></span>Show empty runs (@list.EmptyRuns)
+        </a>
+    }
+</header>
+
+<div class="content">
+    @if (Model.Error is { } error)
+    {
+        <partial name="_ErrorPane" model="error" />
+    }
+    else if (list is null)
+    {
+        <p class="note">@Model.Unavailable</p>
+    }
+    else
+    {
+        <div class="card runs-card">
+            <div class="table-scroll">
+                <table class="runs">
+                    <thead>
+                        <tr>
+                            <th>Started</th><th>Result</th><th class="num">Took</th><th class="num">Pages</th><th class="num">Job links</th>
+                            <th class="num">New</th><th class="num">Known</th><th class="num">Read</th><th class="num">Failed</th><th class="num">Fit</th><th class="num" title="Times the circuit breaker opened">Breaker</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var run in list.Runs)
+                        {
+                            var link = RunsModel.RunLink(run);
+                            <tr data-href="@link" class="@(run.Empty ? "empty-run" : null)">
+                                <td class="nowrap"><a href="@link">@RunText.When(run.StartedAt)</a></td>
+                                <td><span class="status @RunText.StateClass(run)">@RunText.State(run)</span></td>
+                                <td class="num muted nowrap">@RunText.Duration(run)</td>
+                                <td class="num">@run.Pages</td>
+                                <td class="num">@run.Links</td>
+                                <td class="num @(run.New > 0 ? "strong" : "muted")">@run.New</td>
+                                <td class="num @(run.Known > 0 ? "known" : "muted")">@run.Known</td>
+                                <td class="num">@(run.RunId is null ? "—" : run.Read.ToString())</td>
+                                <td class="num">@(run.RunId is null ? "—" : run.Failed.ToString())</td>
+                                <td class="num">@(run.RunId is null ? "—" : run.FitScored.ToString())</td>
+                                <td class="num">@(run.RunId is null ? "—" : run.Openings.ToString())</td>
+                            </tr>
+                        }
+                        @if (list.Runs.Count == 0)
+                        {
+                            <tr class="empty"><td colspan="11">
+                                <span>No acquisition yet. Start one on the <a asp-page="/Acquire">Acquire</a> page.</span>
+                            </td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <footer class="pager">
+                @{
+                    var first = list.Total == 0 ? 0 : (list.Page - 1) * list.PageSize + 1;
+                    var lastShown = Math.Min(list.Page * list.PageSize, list.Total);
+                }
+                <span>Showing @first–@lastShown of @list.Total runs@(Model.ShowEmpty ? "" : $" ({list.EmptyRuns} empty ones hidden)")</span>
+                <nav aria-label="Pages">
+                    @if (list.Page > 1)
+                    {
+                        <a href="@Model.Link(list.Page - 1)" aria-label="Previous page">‹</a>
+                    }
+                    else
+                    {
+                        <span class="off">‹</span>
+                    }
+                    <span class="current">@list.Page</span>
+                    @if (list.Page < Model.TotalPages)
+                    {
+                        <a href="@Model.Link(list.Page + 1)" aria-label="Next page">›</a>
+                    }
+                    else
+                    {
+                        <span class="off">›</span>
+                    }
+                </nav>
+            </footer>
+        </div>
+    }
+</div>

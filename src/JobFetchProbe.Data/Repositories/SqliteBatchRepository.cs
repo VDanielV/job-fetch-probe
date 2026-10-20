@@ -12,7 +12,7 @@ namespace JobFetchProbe.Data.Repositories;
 /// </summary>
 public sealed class SqliteBatchRepository(IDbContextFactory<JobsDbContext> contexts) : IBatchRepository
 {
-    public async Task<string> SaveAsync(JobSearchBatch batch, CancellationToken ct = default)
+    public async Task<BatchSaveResult> SaveAsync(JobSearchBatch batch, CancellationToken ct = default)
     {
         await using var db = await contexts.CreateDbContextAsync(ct);
         await using var tx = await db.Database.BeginTransactionAsync(ct);
@@ -24,6 +24,7 @@ public sealed class SqliteBatchRepository(IDbContextFactory<JobsDbContext> conte
         }
 
         var jobs = await db.UpsertCardsAsync(batch.Jobs, batch.CreatedAt, ct);
+        var added = jobs.Values.Count(j => j.Id == 0); // not in the database yet: no Id before SaveChanges
         await db.SaveChangesAsync(ct); // new jobs get their Id here, inside the transaction
         db.Listings.Add(new ListingRow
         {
@@ -55,6 +56,6 @@ public sealed class SqliteBatchRepository(IDbContextFactory<JobsDbContext> conte
 
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
-        return batchId;
+        return new BatchSaveResult(batchId, added);
     }
 }

@@ -12,6 +12,9 @@ using Microsoft.Extensions.Options;
 //                 (?closed=1 the closed ones; the menu shows the open and flagged counts ← GET api/Applications/summary)
 //   /acquire      explains the acquisition and starts it   ← POST api/JobFetcher
 //                 (?since=…) its progress, refreshed every 15 s  ← GET api/Journal/runs, api/Journal/<step>/runs/{id}
+//   /runs         past acquisitions, newest first          ← GET api/Runs
+//   /runs/{id}    one of them: Summary, Whole run          ← GET api/Runs/{id}, api/Journal/<step>/runs/{id}
+//                 and Job links: new or known, what step 2 did ← GET api/Runs/{id}/job-links
 //   /jobs/{id}    old address of a job: redirects to /?job={id}
 //   /chat         one message to the local model          ← POST api/Chat
 // It never touches the database itself. The chat answer is not stored.
@@ -29,13 +32,14 @@ builder.Services.AddOptions<JobCatalogApiSettings>()
 
 builder.Services.AddSingleton(TimeProvider.System);
 
-// Typed clients through IHttpClientFactory: pooled handlers, nothing to dispose. All seven call the same API.
+// Typed clients through IHttpClientFactory: pooled handlers, nothing to dispose. All eight call the same API.
 // Chat and job fit wait longer than the others (below): one local answer can take minutes, and the catalog must still fail fast.
 builder.Services.AddHttpClient<IJobCatalogClient, JobCatalogClient>(ConfigureApi);
 builder.Services.AddHttpClient<IJobFetcherClient, JobFetcherClient>(ConfigureApi);
 builder.Services.AddHttpClient<IJournalClient, JournalClient>(ConfigureApi);
 builder.Services.AddHttpClient<IJobArchiveClient, JobArchiveClient>(ConfigureApi);
 builder.Services.AddHttpClient<IApplicationClient, ApplicationClient>(ConfigureApi);
+builder.Services.AddHttpClient<IRunsClient, RunsClient>(ConfigureApi);
 // Job fit and chat wait for the local model: JobCatalogApi:LocalModelTimeoutSeconds, a little longer than the API's
 // Ollama:TimeoutSeconds.
 builder.Services.AddHttpClient<IJobFitClient, JobFitClient>((services, client) =>

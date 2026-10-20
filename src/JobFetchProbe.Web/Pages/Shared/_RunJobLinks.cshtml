@@ -1,0 +1,72 @@
+@model JobFetchProbe.Web.Pages.RunModel
+@using JobFetchProbe.Web.Pages
+@* The Job links tab of a past run: every link of its listing, new or already known, the job now, and what step 2 did. *@
+@{
+    var all = Model.Links?.Links ?? [];
+    var newCount = all.Count(l => l.IsNew);
+    var shown = Model.ShownLinks;
+}
+<div class="run-links">
+    @if (all.Count == 0)
+    {
+        <p class="muted run-links-none">This run stored no job links: it found no saved page@(Model.Run?.Read > 0 ? ", and step 2 read jobs left over from earlier runs (see Whole run)" : "").</p>
+    }
+    else
+    {
+        <div class="chip-row">
+            <a class="fchip @(Model.Show == RunModel.ShowAll ? "on" : null)" href="@Model.Link(RunModel.TabLinks)">All <i>@all.Count</i></a>
+            <a class="fchip @(Model.Show == RunModel.ShowNew ? "on" : null)" href="@Model.Link(RunModel.TabLinks, RunModel.ShowNew)">New <i>@newCount</i></a>
+            <a class="fchip @(Model.Show == RunModel.ShowKnown ? "on" : null)" href="@Model.Link(RunModel.TabLinks, RunModel.ShowKnown)">Already known <i>@(all.Count - newCount)</i></a>
+        </div>
+        <div class="table-scroll">
+            <table class="run-links-table">
+                <thead>
+                    <tr><th class="num">#</th><th>Title</th><th>Company</th><th>In the database</th><th>Now</th><th class="col-fit">Fit</th><th>Step 2 in this run</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var link in shown)
+                    {
+                        var href = RunModel.JobLink(link);
+                        <tr data-href="@href">
+                            <td class="num muted">@link.Position</td>
+                            <td class="title">
+                                <a href="@href">@(link.Title ?? "#" + link.JobId)</a>
+                                @if (link.Page is { } file)
+                                {
+                                    <small class="muted page-file" title="The saved page it was found on">@file</small>
+                                }
+                            </td>
+                            <td>@link.Company</td>
+                            <td class="nowrap">
+                                @if (link.IsNew)
+                                {
+                                    <span class="seen new">New</span>
+                                }
+                                else
+                                {
+                                    <span class="seen known" title="First seen @RunText.Day(link.FirstSeenAt)">Known · since @RunText.Day(link.FirstSeenAt)</span>
+                                }
+                            </td>
+                            <td class="nowrap">
+                                <span class="status @link.Status">@link.Status</span>
+                                @if (link.AppliedAt is { } applied)
+                                {
+                                    <span class="archived-tag" title="Applied on @RunText.Day(applied)">Applied</span>
+                                }
+                                else if (link.ArchivedAt is { } archived)
+                                {
+                                    <span class="archived-tag" title="Archived on @RunText.Day(archived)">Archived</span>
+                                }
+                            </td>
+                            <td class="col-fit"><partial name="_FitCell" model="link.Fit" /></td>
+                            <td>
+                                <span class="status @RunText.Step2Class(link.Step2)">@RunText.Step2Tag(link.Step2)</span>
+                                <span class="muted step2-detail">@RunText.Step2Detail(link)</span>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

@@ -610,3 +610,23 @@ th.col-fit a:hover { color: var(--text); }
 .fit-earlier-decision { margin: 0 .3rem; font-weight: 600; }
 .fit-earlier-reason { display: block; margin-top: .15rem; color: #374151; }
 .source-id { color: var(--muted); font-size: .85rem; }
+
+/* ---------- Runs: past acquisitions ---------- */
+
+.runs-card { max-height: calc(100vh - 9rem); }
+th.num, td.num { text-align: right; white-space: nowrap; }
+td.strong { font-weight: 700; color: var(--accent-strong); }
+td.known { color: #c2410c; font-weight: 600; }
+tr.empty-run td { color: var(--muted); }
+.status.External, .status.NoJournal { background: #f3f4f6; color: #6b7280; }
+.run-pane .pp-head small span { white-space: nowrap; }
+.run-links { padding: .9rem 1.25rem 1.1rem; }
+.run-links-none { margin: 0; }
+.run-links .table-scroll { max-height: calc(100vh - 20rem); border: 1px solid var(--line); border-radius: 8px; }
+.run-links-table td { font-size: .88rem; padding: .55rem .75rem; }
+.run-links-table th { padding: .55rem .75rem; }
+.page-file { display: block; margin-top: .1rem; font-size: .75rem; font-weight: 400; }
+.seen { display: inline-block; padding: .1rem .5rem; border-radius: 6px; font-size: .75rem; font-weight: 600; }
+.seen.new { background: var(--accent-soft); color: var(--accent-strong); }
+.seen.known { background: #fff7ed; color: #c2410c; }
+.step2-detail { display: block; margin-top: .15rem; font-size: .8rem; }

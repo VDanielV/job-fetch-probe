@@ -38,7 +38,7 @@ public sealed class LoggingAcquisitionObserver(ILogger<LoggingAcquisitionObserve
         }
         if (result.Success)
         {
-            logger.LogInformation("[{Index}/{Total}] {File}: {Jobs} jobs ({NewJobs} new)", progress.Index, progress.Total, progress.File, result.Jobs, result.NewJobs);
+            logger.LogInformation("[{Index}/{Total}] {File}: {Jobs} jobs ({Unique} not on an earlier page)", progress.Index, progress.Total, progress.File, result.Jobs, result.NewJobs);
         }
         else
         {
@@ -59,7 +59,8 @@ public sealed class LoggingAcquisitionObserver(ILogger<LoggingAcquisitionObserve
         else
         {
             var archived = result.Files.Count(f => f.ArchivedTo is not null);
-            logger.LogInformation("Stored {Count} unique job links as listing {ListingId}; {Archived} page(s) archived.", result.Batch.Count, result.ListingId, archived);
+            logger.LogInformation("Stored {Count} unique job links as listing {ListingId} ({New} new, {Known} already known); {Archived} page(s) archived.",
+                result.Batch.Count, result.ListingId, result.NewJobs, result.Batch.Count - result.NewJobs, archived);
         }
     }
 

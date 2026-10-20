@@ -47,7 +47,7 @@
                 }
                 else if (l.ListingId is not null)
                 {
-                    <span>@l.JobsStored stored as listing @l.ListingId (@l.NewJobs new)</span>
+                    <span>@l.JobsStored stored as listing @l.ListingId (@v.NewJobs new, @v.KnownJobs already known)</span>
                 }
                 else if (l.State == JournalRunState.Stopped)
                 {

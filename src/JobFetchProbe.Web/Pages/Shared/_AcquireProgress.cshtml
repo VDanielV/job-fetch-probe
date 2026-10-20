@@ -22,7 +22,7 @@
                 else
                 {
                     <span>@l.PagesRead page(s) read, @l.PagesKept kept</span>
-                    <span>@l.JobsStored job links stored, @l.NewJobs new</span>
+                    <span>@l.JobsStored job links stored: @Model.NewJobs new, @Model.KnownJobs already known</span>
                     @if (l.ListingId is not null)
                     {
                         <span class="muted">listing @l.ListingId</span>

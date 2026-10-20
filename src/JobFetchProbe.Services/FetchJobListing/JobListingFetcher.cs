@@ -100,7 +100,7 @@ public sealed class JobListingFetcher(
         }
 
         // From here the step completes: the listing is stored in one transaction and the pages are archived.
-        var listingId = await repository.SaveAsync(batch, CancellationToken.None);
+        var saved = await repository.SaveAsync(batch, CancellationToken.None);
 
         foreach (var (path, index) in readPaths)
         {
@@ -114,6 +114,6 @@ public sealed class JobListingFetcher(
             }
         }
 
-        return new JobListingFetchResult(files, batch, listingId);
+        return new JobListingFetchResult(files, batch, saved.ListingId, NewJobs: saved.NewJobs);
     }
 }

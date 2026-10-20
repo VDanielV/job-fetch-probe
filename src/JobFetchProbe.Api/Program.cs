@@ -6,10 +6,12 @@ using JobFetchProbe.Data.Applications;
 using JobFetchProbe.Data.Archive;
 using JobFetchProbe.Data.Fit;
 using JobFetchProbe.Data.Configuration;
+using JobFetchProbe.Data.RunHistory;
 using JobFetchProbe.Infrastructure;
 using JobFetchProbe.Services;
 using JobFetchProbe.Services.Applications;
 using JobFetchProbe.Services.Archive;
+using JobFetchProbe.Services.RunHistory;
 using Microsoft.Extensions.Options;
 
 // RESTful API over the jobs database. It reads the stored jobs and the journal, and can start an acquisition.
@@ -26,7 +28,10 @@ using Microsoft.Extensions.Options;
 //   GET api/Journal/runs?take=10             recent runs of both steps (journal)
 //   GET api/Journal/job-listing/runs/{id}?after={entryId}   a step 1 run and its new entries
 //   GET api/Journal/job-details/runs/{id}?after={entryId}   a step 2 run and its new entries
-//   POST api/Chat                            one message to the local model (ChatRequest → ChatResponse)
+//   GET api/Runs?page=&includeEmpty=        past acquisitions, newest first (RunHistoryPage); GET api/Runs/{id} one of them
+//   GET api/Runs/{id}/job-links              its job links: new or known, the job now, what step 2 did (RunJobLinks);
+//                                            GET api/Runs/listings/{listingId}/job-links for a listing without a journal
+//   POST api/Chat                           one message to the local model (ChatRequest → ChatResponse)
 //   POST api/JobFit                          score one stored job and keep the score (JobFitRequest → JobFitResult)
 //   GET api/JobFit/{jobId}                   every stored score of the job, newest first (JobFitHistory)
 //   GET openapi/v1.json                      the API description (Development only)
@@ -61,6 +66,11 @@ builder.Services
 builder.Services
     .AddJobArchive()
     .AddJobArchiveStore();
+
+// Past acquisitions (RunsController): read only, from the journal and the listings.
+builder.Services
+    .AddRunHistory()
+    .AddRunHistoryStore();
 
 // Applications (ApplicationsController): the jobs applied to, with stage and notes; its own service and tables.
 builder.Services

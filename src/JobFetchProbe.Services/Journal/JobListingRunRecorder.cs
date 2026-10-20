@@ -111,7 +111,7 @@ internal sealed class JobListingRunRecorder : IJobListingRunRecorder
                 State = ended,
                 Pages = result.Files.Count,
                 JobsStored = result.Batch?.Count ?? 0,
-                NewJobs = result.Files.Sum(f => f.NewJobs),
+                NewJobs = result.NewJobs,
                 ListingId = result.ListingId,
                 Message = Summary(result),
             };
@@ -162,6 +162,7 @@ internal sealed class JobListingRunRecorder : IJobListingRunRecorder
         {
             return $"{result.Files.Count} page(s), none could be read; nothing stored. The pages stay in the input folder.";
         }
-        return $"{result.Files.Count} page(s): {read} read, {kept} kept. {result.Batch?.Count ?? 0} job links stored as listing {result.ListingId}.";
+        var links = result.Batch?.Count ?? 0;
+        return $"{result.Files.Count} page(s): {read} read, {kept} kept. {links} job links stored as listing {result.ListingId} ({result.NewJobs} new, {links - result.NewJobs} already known).";
     }
 }
