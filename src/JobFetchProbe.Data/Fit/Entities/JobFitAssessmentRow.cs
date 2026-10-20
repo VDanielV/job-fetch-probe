@@ -4,7 +4,8 @@ namespace JobFetchProbe.Data.Fit.Entities;
 public sealed class JobFitAssessmentRow
 {
     public long Id { get; set; }
-    public string JobId { get; set; } = string.Empty;
+    /// <summary>The job (<c>Jobs.Id</c>).</summary>
+    public long JobId { get; set; }
     public DateTimeOffset AssessedAt { get; set; }
 
     /// <summary>0 to 100.</summary>

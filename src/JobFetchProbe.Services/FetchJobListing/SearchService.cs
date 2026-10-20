@@ -81,7 +81,7 @@ public sealed partial class SearchService(
         // the page holds no list. Reading that one job as "the results" would be misleading, so it is refused. This is
         // what a view-source save of LinkedIn's signed-in pages looks like; a complete save in a new, unknown layout too.
         if (parsed.Jobs.Count <= 1 && CurrentJobId(sourceUrl) is { } selected &&
-            parsed.Jobs.All(j => j.JobId == selected) && !parsed.ParsedFrom.StartsWith("LinkedIn", StringComparison.Ordinal))
+            parsed.Jobs.All(j => j.SourceJobId == selected) && !parsed.ParsedFrom.StartsWith("LinkedIn", StringComparison.Ordinal))
         {
             return SearchResult.Failed(
                 "no result list found, only the selected job (" + selected + "). If this is a view-source save (Ctrl+U), it " +

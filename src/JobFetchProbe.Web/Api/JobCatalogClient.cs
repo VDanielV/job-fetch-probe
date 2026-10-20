@@ -50,9 +50,9 @@ public sealed class JobCatalogClient(HttpClient http) : IJobCatalogClient
             ?? throw new InvalidOperationException("The API returned an empty page.");
     }
 
-    public async Task<StoredJob?> GetJobAsync(string jobId, CancellationToken ct = default)
+    public async Task<StoredJob?> GetJobAsync(long jobId, CancellationToken ct = default)
     {
-        using var response = await SendAsync($"{Route}/{Uri.EscapeDataString(jobId)}", ct);
+        using var response = await SendAsync($"{Route}/{jobId}", ct);
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
             return null;

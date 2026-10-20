@@ -139,7 +139,48 @@ public sealed class AcquireModel(IJobFetcherClient fetcher, IJournalClient journ
             apiError = PageError.From(ex.ErrorType, ex.Message);
         }
 
+        // Opened without ?since= while a run goes on (sidebar, another tab): follow that run, so its pane stays when it ends.
+        if (Since is null && View is not null && View.IsRunning && !View.IsStarting && View.StartedAt is { } started)
+        {
+            Since = started.ToUnixTimeSeconds();
+        }
+
+        askedTab = tab;
         Tab = ChooseTab(tab);
+    }
+
+    private string? askedTab;
+
+    /// <summary>Where the automatic reload goes: this run's page (?since=), keeping a tab only if one was picked.</summary>
+    public string RefreshUrl
+    {
+        get
+        {
+            string? keptTab = null;
+            if (askedTab is TabProgress or TabRun or TabSummary)
+            {
+                keptTab = askedTab;
+            }
+            string? stopping = null;
+            if (StopRequested)
+            {
+                stopping = "true";
+            }
+            return Url.Page("/Acquire", new { since = Since, tab = keptTab, stopping }) ?? "/Acquire";
+        }
+    }
+
+    /// <summary>The last run's summary, from the plain page: its start time as ?since=.</summary>
+    public long? LastRunSince
+    {
+        get
+        {
+            if (View?.StartedAt is { } started)
+            {
+                return started.ToUnixTimeSeconds();
+            }
+            return null;
+        }
     }
 
     /// <summary>The Stop button. As with the start, the answer is shown after a reload.</summary>

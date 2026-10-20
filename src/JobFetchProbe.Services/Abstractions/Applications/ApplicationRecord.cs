@@ -8,7 +8,7 @@ namespace JobFetchProbe.Services.Abstractions.Applications;
 /// <param name="NoteCount">How many notes the owner wrote.</param>
 /// <param name="Fit">The job's latest fit assessment, or null.</param>
 public sealed record ApplicationRecord(
-    string JobId,
+    long JobId,
     string? Title,
     string? Company,
     string? Location,

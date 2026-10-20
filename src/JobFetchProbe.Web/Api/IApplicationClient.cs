@@ -9,13 +9,13 @@ namespace JobFetchProbe.Web.Api;
 public interface IApplicationClient
 {
     /// <summary>POST api/Applications: "I applied".</summary>
-    Task<Application> ApplyAsync(string jobId, CancellationToken ct = default);
+    Task<Application> ApplyAsync(long jobId, CancellationToken ct = default);
 
     /// <summary>
     /// DELETE api/Applications/{jobId}: undo. Returns 0 when it was deleted; otherwise the number of notes the owner wrote,
     /// and nothing was deleted (ask, then call again with <paramref name="withNotes"/>).
     /// </summary>
-    Task<int> UndoAsync(string jobId, bool withNotes, CancellationToken ct = default);
+    Task<int> UndoAsync(long jobId, bool withNotes, CancellationToken ct = default);
 
     /// <summary>GET api/Applications: one page of the open (or closed) applications.</summary>
     Task<ApplicationPage> GetPageAsync(
@@ -23,13 +23,13 @@ public interface IApplicationClient
         CancellationToken ct = default);
 
     /// <summary>GET api/Applications/{jobId}, or null when the job is not in the applications.</summary>
-    Task<Application?> GetAsync(string jobId, CancellationToken ct = default);
+    Task<Application?> GetAsync(long jobId, CancellationToken ct = default);
 
     /// <summary>PUT api/Applications/{jobId}/stage.</summary>
-    Task<Application> SetStageAsync(string jobId, ApplicationStage stage, CancellationToken ct = default);
+    Task<Application> SetStageAsync(long jobId, ApplicationStage stage, CancellationToken ct = default);
 
     /// <summary>POST api/Applications/{jobId}/notes.</summary>
-    Task<Application> AddNoteAsync(string jobId, string text, CancellationToken ct = default);
+    Task<Application> AddNoteAsync(long jobId, string text, CancellationToken ct = default);
 
     /// <summary>GET api/Applications/summary: the numbers for the menu.</summary>
     Task<ApplicationsSummary> GetSummaryAsync(CancellationToken ct = default);

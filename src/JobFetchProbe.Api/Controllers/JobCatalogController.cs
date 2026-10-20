@@ -44,13 +44,13 @@ public sealed class JobCatalogController(IJobRetriever jobs) : ControllerBase
     }
 
     /// <summary>One job: its details, description and status.</summary>
-    /// <param name="jobId">The job ID, e.g. 4476446382.</param>
-    /// <remarks>GET api/JobCatalog/4476446382</remarks>
-    [HttpGet("{jobId}")]
+    /// <param name="jobId">The app's ID of the job, e.g. 57.</param>
+    /// <remarks>GET api/JobCatalog/57</remarks>
+    [HttpGet("{jobId:long}")]
     [ProducesResponseType<StoredJob>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
-    public async Task<ActionResult<StoredJob>> GetJob(string jobId, CancellationToken ct = default)
+    public async Task<ActionResult<StoredJob>> GetJob(long jobId, CancellationToken ct = default)
     {
         var job = await jobs.GetJobAsync(jobId, ct);
         if (job is null)

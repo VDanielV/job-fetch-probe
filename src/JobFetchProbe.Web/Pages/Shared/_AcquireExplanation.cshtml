@@ -6,5 +6,5 @@
 <ol class="flow">
     <li><strong>Save search pages</strong>Save LinkedIn result pages into <code>input</code> in your data folder.</li>
     <li><strong>Job links</strong>Each page is read and its jobs stored; the page moves to <code>input\archived</code>.</li>
-    <li><strong>Descriptions</strong>Each job without a description is fetched, one at a time.</li>
+    <li><strong>Descriptions</strong>Each job without a description is fetched, one at a time. Right after, its fit is scored by the local model; that time adds to the pause before the next request.</li>
 </ol>

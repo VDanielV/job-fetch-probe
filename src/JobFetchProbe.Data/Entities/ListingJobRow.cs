@@ -4,7 +4,8 @@ namespace JobFetchProbe.Data.Entities;
 public sealed class ListingJobRow
 {
     public string BatchId { get; set; } = string.Empty;
-    public string JobId { get; set; } = string.Empty;
+    /// <summary>The job (<c>Jobs.Id</c>).</summary>
+    public long JobId { get; set; }
     public int Position { get; set; }
     public string Url { get; set; } = string.Empty;
     public string? Title { get; set; }

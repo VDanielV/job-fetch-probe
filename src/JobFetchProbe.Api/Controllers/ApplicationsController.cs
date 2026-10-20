@@ -16,7 +16,7 @@ public sealed class ApplicationsController(IApplicationTracker applications) : C
     public const int MaxPageSize = 100;
 
     /// <summary>"I applied": the job leaves the Overview and starts at stage Applied.</summary>
-    /// <remarks>POST api/Applications { "jobId": "4476446382" }</remarks>
+    /// <remarks>POST api/Applications { "jobId": 57 }</remarks>
     /// <response code="201">The new application with its first timeline line.</response>
     /// <response code="400">No job ID.</response>
     /// <response code="404">That job is not in the database.</response>
@@ -55,12 +55,12 @@ public sealed class ApplicationsController(IApplicationTracker applications) : C
     /// <response code="204">Deleted.</response>
     /// <response code="404">There is no application for that job.</response>
     /// <response code="409">The owner wrote notes and withNotes is not true; the problem's "notes" says how many.</response>
-    [HttpDelete("{jobId}")]
+    [HttpDelete("{jobId:long}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
-    public async Task<IActionResult> Undo(string jobId, [FromQuery] bool withNotes = false, CancellationToken ct = default)
+    public async Task<IActionResult> Undo(long jobId, [FromQuery] bool withNotes = false, CancellationToken ct = default)
     {
         try
         {
@@ -118,11 +118,11 @@ public sealed class ApplicationsController(IApplicationTracker applications) : C
 
     /// <summary>One application with its timeline, newest line first.</summary>
     /// <response code="404">There is no application for that job.</response>
-    [HttpGet("{jobId}")]
+    [HttpGet("{jobId:long}")]
     [ProducesResponseType<Application>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
-    public async Task<ActionResult<Application>> Get(string jobId, CancellationToken ct = default)
+    public async Task<ActionResult<Application>> Get(long jobId, CancellationToken ct = default)
     {
         var application = await applications.GetAsync(jobId, ct);
         if (application is null)
@@ -133,15 +133,15 @@ public sealed class ApplicationsController(IApplicationTracker applications) : C
     }
 
     /// <summary>Moves the application to another stage and adds a line to its timeline.</summary>
-    /// <remarks>PUT api/Applications/4476446382/stage { "stage": "Interview" }</remarks>
+    /// <remarks>PUT api/Applications/57/stage { "stage": "Interview" }</remarks>
     /// <response code="400">An unknown stage.</response>
     /// <response code="404">There is no application for that job.</response>
-    [HttpPut("{jobId}/stage")]
+    [HttpPut("{jobId:long}/stage")]
     [ProducesResponseType<Application>(StatusCodes.Status200OK)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
-    public async Task<ActionResult<Application>> SetStage(string jobId, StageRequest request, CancellationToken ct = default)
+    public async Task<ActionResult<Application>> SetStage(long jobId, StageRequest request, CancellationToken ct = default)
     {
         try
         {
@@ -159,15 +159,15 @@ public sealed class ApplicationsController(IApplicationTracker applications) : C
     }
 
     /// <summary>Adds a note to the timeline, dated now.</summary>
-    /// <remarks>POST api/Applications/4476446382/notes { "text": "Recruiter called." }</remarks>
+    /// <remarks>POST api/Applications/57/notes { "text": "Recruiter called." }</remarks>
     /// <response code="400">An empty note, or one over 2000 characters.</response>
     /// <response code="404">There is no application for that job.</response>
-    [HttpPost("{jobId}/notes")]
+    [HttpPost("{jobId:long}/notes")]
     [ProducesResponseType<Application>(StatusCodes.Status200OK)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
-    public async Task<ActionResult<Application>> AddNote(string jobId, NoteRequest request, CancellationToken ct = default)
+    public async Task<ActionResult<Application>> AddNote(long jobId, NoteRequest request, CancellationToken ct = default)
     {
         try
         {
@@ -201,12 +201,12 @@ public sealed class ApplicationsController(IApplicationTracker applications) : C
         return new ObjectResult(problem) { StatusCode = StatusCodes.Status409Conflict };
     }
 
-    private ObjectResult JobNotFound(string jobId)
+    private ObjectResult JobNotFound(long jobId)
     {
         return Problem(statusCode: StatusCodes.Status404NotFound, title: "Job not found", detail: $"There is no job {jobId} in the database.");
     }
 
-    private ObjectResult NotApplied(string jobId)
+    private ObjectResult NotApplied(long jobId)
     {
         return Problem(
             statusCode: StatusCodes.Status404NotFound, title: "No application", detail: $"Job {jobId} is not in your applications.");

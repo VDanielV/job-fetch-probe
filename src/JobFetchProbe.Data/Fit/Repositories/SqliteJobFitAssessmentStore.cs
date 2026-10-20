@@ -7,14 +7,14 @@ namespace JobFetchProbe.Data.Fit.Repositories;
 /// <summary>Keeps every fit assessment in the JobFitAssessments table. Never changes Jobs.</summary>
 public sealed class SqliteJobFitAssessmentStore(IDbContextFactory<JobsDbContext> contexts) : IJobFitAssessmentStore
 {
-    public async Task AddAsync(string jobId, JobFitAssessment assessment, CancellationToken ct = default)
+    public async Task AddAsync(long jobId, JobFitAssessment assessment, CancellationToken ct = default)
     {
         await using var db = await contexts.CreateDbContextAsync(ct);
         db.JobFitAssessments.Add(assessment.ToRow(jobId));
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task<IReadOnlyList<JobFitAssessment>> GetAsync(string jobId, CancellationToken ct = default)
+    public async Task<IReadOnlyList<JobFitAssessment>> GetAsync(long jobId, CancellationToken ct = default)
     {
         await using var db = await contexts.CreateDbContextAsync(ct);
         var rows = await db.JobFitAssessments.AsNoTracking().Where(a => a.JobId == jobId).ToListAsync(ct);

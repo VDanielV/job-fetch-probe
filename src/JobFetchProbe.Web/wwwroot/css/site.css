@@ -609,3 +609,4 @@ th.col-fit a:hover { color: var(--text); }
 .fit-earlier-when { color: var(--muted); margin-right: .4rem; }
 .fit-earlier-decision { margin: 0 .3rem; font-weight: 600; }
 .fit-earlier-reason { display: block; margin-top: .15rem; color: #374151; }
+.source-id { color: var(--muted); font-size: .85rem; }

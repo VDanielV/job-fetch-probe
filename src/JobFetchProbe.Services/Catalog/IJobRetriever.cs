@@ -10,7 +10,7 @@ namespace JobFetchProbe.Services.Catalog;
 public interface IJobRetriever
 {
     /// <summary>
-    /// One page of jobs, newest job IDs first, or the best latest fit first with <paramref name="sort"/> Fit. Archived jobs
+    /// One page of jobs, most recently found first, or the best latest fit first with <paramref name="sort"/> Fit. Archived jobs
     /// are left out unless <paramref name="includeArchived"/>.
     /// </summary>
     /// <param name="page">1-based. A page past the end returns the last page; the result says which page it is.</param>
@@ -27,5 +27,5 @@ public interface IJobRetriever
         CancellationToken ct = default);
 
     /// <summary>One job with its details and description, or null if there is no such job.</summary>
-    Task<StoredJob?> GetJobAsync(string jobId, CancellationToken ct = default);
+    Task<StoredJob?> GetJobAsync(long jobId, CancellationToken ct = default);
 }

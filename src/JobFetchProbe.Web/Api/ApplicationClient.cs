@@ -10,15 +10,15 @@ public sealed class ApplicationClient(HttpClient http) : IApplicationClient
 {
     private const string Route = "api/Applications";
 
-    public async Task<Application> ApplyAsync(string jobId, CancellationToken ct = default)
+    public async Task<Application> ApplyAsync(long jobId, CancellationToken ct = default)
     {
         using var response = await ApiCall.SendAsync(http, () => http.PostAsJsonAsync(Route, new ApplyRequest(jobId), ApiJson.Options, ct), ct);
         return await ReadApplicationAsync(response, ct);
     }
 
-    public async Task<int> UndoAsync(string jobId, bool withNotes, CancellationToken ct = default)
+    public async Task<int> UndoAsync(long jobId, bool withNotes, CancellationToken ct = default)
     {
-        var path = $"{Route}/{Uri.EscapeDataString(jobId)}";
+        var path = $"{Route}/{jobId}";
         if (withNotes)
         {
             path += "?withNotes=true";
@@ -63,9 +63,9 @@ public sealed class ApplicationClient(HttpClient http) : IApplicationClient
             ?? throw new InvalidOperationException("The API returned an empty page.");
     }
 
-    public async Task<Application?> GetAsync(string jobId, CancellationToken ct = default)
+    public async Task<Application?> GetAsync(long jobId, CancellationToken ct = default)
     {
-        using var response = await ApiCall.SendAsync(http, () => http.GetAsync($"{Route}/{Uri.EscapeDataString(jobId)}", ct), ct);
+        using var response = await ApiCall.SendAsync(http, () => http.GetAsync($"{Route}/{jobId}", ct), ct);
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
             return null;
@@ -74,16 +74,16 @@ public sealed class ApplicationClient(HttpClient http) : IApplicationClient
         return await response.Content.ReadFromJsonAsync<Application>(ApiJson.Options, ct);
     }
 
-    public async Task<Application> SetStageAsync(string jobId, ApplicationStage stage, CancellationToken ct = default)
+    public async Task<Application> SetStageAsync(long jobId, ApplicationStage stage, CancellationToken ct = default)
     {
-        var path = $"{Route}/{Uri.EscapeDataString(jobId)}/stage";
+        var path = $"{Route}/{jobId}/stage";
         using var response = await ApiCall.SendAsync(http, () => http.PutAsJsonAsync(path, new StageRequest(stage), ApiJson.Options, ct), ct);
         return await ReadApplicationAsync(response, ct);
     }
 
-    public async Task<Application> AddNoteAsync(string jobId, string text, CancellationToken ct = default)
+    public async Task<Application> AddNoteAsync(long jobId, string text, CancellationToken ct = default)
     {
-        var path = $"{Route}/{Uri.EscapeDataString(jobId)}/notes";
+        var path = $"{Route}/{jobId}/notes";
         using var response = await ApiCall.SendAsync(http, () => http.PostAsJsonAsync(path, new NoteRequest(text), ApiJson.Options, ct), ct);
         return await ReadApplicationAsync(response, ct);
     }

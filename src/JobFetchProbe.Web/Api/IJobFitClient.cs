@@ -11,8 +11,8 @@ namespace JobFetchProbe.Web.Api;
 public interface IJobFitClient
 {
     /// <summary>POST api/JobFit { jobId }. Takes as long as the local model needs (up to JobCatalogApi:LocalModelTimeoutSeconds).</summary>
-    Task<JobFitResult> AssessAsync(string jobId, CancellationToken ct = default);
+    Task<JobFitResult> AssessAsync(long jobId, CancellationToken ct = default);
 
     /// <summary>GET api/JobFit/{jobId}: the stored scores, newest first; null when the job is not in the database.</summary>
-    Task<JobFitHistory?> GetHistoryAsync(string jobId, CancellationToken ct = default);
+    Task<JobFitHistory?> GetHistoryAsync(long jobId, CancellationToken ct = default);
 }

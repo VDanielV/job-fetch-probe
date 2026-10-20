@@ -95,7 +95,7 @@ public sealed class IndexModel(IJobCatalogClient api, IJobArchiveClient archive,
     public string? AppliedFollowUp { get; set; }
 
     /// <summary>The job just marked as applied (with its title and follow-up day), or null.</summary>
-    public (string JobId, string Title, string? FollowUp)? Applied { get; private set; }
+    public (long JobId, string Title, string? FollowUp)? Applied { get; private set; }
 
     /// <summary>The score of the job in the pane, when "Check fit" was used without the script; null otherwise.</summary>
     public FitView? Fit { get; private set; }
@@ -107,14 +107,14 @@ public sealed class IndexModel(IJobCatalogClient api, IJobArchiveClient archive,
     public string? Unavailable { get; private set; }
 
     /// <summary>The job requested with ?job=, or null.</summary>
-    public string? SelectedId { get; private set; }
+    public long? SelectedId { get; private set; }
 
     /// <summary>The job shown in the details pane; null when none is selected or it does not exist.</summary>
     public StoredJob? Selected { get; private set; }
 
     public async Task OnGetAsync(
         [FromQuery(Name = "p")] int page = 1,
-        [FromQuery(Name = "job")] string? job = null,
+        [FromQuery(Name = "job")] long? job = null,
         [FromQuery(Name = "archived")] int archived = 0,
         [FromQuery(Name = "q")] string? q = null,
         [FromQuery(Name = "in")] string? scope = null,
@@ -124,9 +124,9 @@ public sealed class IndexModel(IJobCatalogClient api, IJobArchiveClient archive,
         [FromQuery(Name = "sort")] string? sort = null,
         CancellationToken ct = default)
     {
-        if (!string.IsNullOrWhiteSpace(job))
+        if (job is not null)
         {
-            SelectedId = job.Trim();
+            SelectedId = job;
         }
         SetState(archived, q, scope, size, place, mode, sort);
         if (size is not null && PageSizes.Contains(size.Value))
@@ -139,7 +139,10 @@ public sealed class IndexModel(IJobCatalogClient api, IJobArchiveClient archive,
         }
         if (AppliedJobId is not null)
         {
-            Applied = (AppliedJobId, AppliedTitle ?? AppliedJobId, AppliedFollowUp);
+            if (long.TryParse(AppliedJobId, out var appliedId))
+            {
+                Applied = (appliedId, AppliedTitle ?? AppliedJobId, AppliedFollowUp);
+            }
         }
         if (FitJson is not null)
         {
@@ -156,14 +159,14 @@ public sealed class IndexModel(IJobCatalogClient api, IJobArchiveClient archive,
             Jobs = await api.GetPageAsync(Math.Max(1, page), Size, ShowArchived, Query, Scope, Places, Modes, Sort, ct);
             if (SelectedId is not null)
             {
-                Selected = await api.GetJobAsync(SelectedId, ct);
+                Selected = await api.GetJobAsync(SelectedId.Value, ct);
                 if (Selected is null)
                 {
                     Response.StatusCode = StatusCodes.Status404NotFound;
                 }
                 else
                 {
-                    Fit = await StoredFitAsync(SelectedId, Fit, ct);
+                    Fit = await StoredFitAsync(SelectedId.Value, Fit, ct);
                 }
             }
         }
@@ -179,14 +182,14 @@ public sealed class IndexModel(IJobCatalogClient api, IJobArchiveClient archive,
 
     /// <summary>A: archives the ticked rows with one reason, then shows the same page again (refilled), keeping the pane open.</summary>
     public async Task<IActionResult> OnPostArchiveSelectedAsync(
-        string[]? jobIds, ArchiveReason reason, string? note, int p = 1, int archived = 0, string? job = null,
+        long[]? jobIds, ArchiveReason reason, string? note, int p = 1, int archived = 0, long? job = null,
         string? q = null, [FromForm(Name = "in")] string? scope = null, int? size = null, string[]? place = null, string[]? mode = null,
         string? sort = null, CancellationToken ct = default)
     {
         SetState(archived, q, scope, size, place, mode, sort);
         var ids = jobIds ?? [];
         var result = await TryArchiveAsync(ids, reason, note, ct);
-        if (result is not null && job is not null && ids.Contains(job))
+        if (result is not null && job is not null && ids.Contains(job.Value))
         {
             job = null; // the job in the pane was archived: close the pane
         }
@@ -195,7 +198,7 @@ public sealed class IndexModel(IJobCatalogClient api, IJobArchiveClient archive,
 
     /// <summary>C: archives the job in the pane, then opens the job that came after it (it now sits at the same position).</summary>
     public async Task<IActionResult> OnPostArchiveOpenAsync(
-        string jobId, ArchiveReason reason, string? note, int index, int p = 1, int archived = 0,
+        long jobId, ArchiveReason reason, string? note, int index, int p = 1, int archived = 0,
         string? q = null, [FromForm(Name = "in")] string? scope = null, int? size = null, string[]? place = null, string[]? mode = null,
         string? sort = null, CancellationToken ct = default)
     {
@@ -215,7 +218,7 @@ public sealed class IndexModel(IJobCatalogClient api, IJobArchiveClient archive,
     /// after archiving from the pane). A green line says so and can undo it.
     /// </summary>
     public async Task<IActionResult> OnPostApplyAsync(
-        string jobId, int index, int p = 1, int archived = 0,
+        long jobId, int index, int p = 1, int archived = 0,
         string? q = null, [FromForm(Name = "in")] string? scope = null, int? size = null, string[]? place = null, string[]? mode = null,
         string? sort = null, CancellationToken ct = default)
     {
@@ -223,8 +226,8 @@ public sealed class IndexModel(IJobCatalogClient api, IJobArchiveClient archive,
         try
         {
             var applied = await applications.ApplyAsync(jobId, ct);
-            AppliedJobId = jobId;
-            AppliedTitle = applied.Summary.Title ?? jobId;
+            AppliedJobId = jobId.ToString();
+            AppliedTitle = applied.Summary.Title ?? jobId.ToString();
             if (applied.Summary.FlagFrom is { } from)
             {
                 AppliedFollowUp = ApplicationStageText.Day(from);
@@ -242,7 +245,7 @@ public sealed class IndexModel(IJobCatalogClient api, IJobArchiveClient archive,
 
     /// <summary>Undo of "I applied" from the green line: the job is back in the list, and opens again.</summary>
     public async Task<IActionResult> OnPostUndoApplyAsync(
-        string jobId, int p = 1, int archived = 0,
+        long jobId, int p = 1, int archived = 0,
         string? q = null, [FromForm(Name = "in")] string? scope = null, int? size = null, string[]? place = null, string[]? mode = null,
         string? sort = null, CancellationToken ct = default)
     {
@@ -269,7 +272,7 @@ public sealed class IndexModel(IJobCatalogClient api, IJobArchiveClient archive,
     /// the next page. Under a text filter the list holds only the matches, so "the next job" is the next match. When the
     /// next job cannot be worked out, the pane closes.
     /// </summary>
-    private async Task<(int Page, string? Next)> NextJobAsync(int p, int index, string goneId, CancellationToken ct)
+    private async Task<(int Page, long? Next)> NextJobAsync(int p, int index, long goneId, CancellationToken ct)
     {
         try
         {
@@ -299,7 +302,7 @@ public sealed class IndexModel(IJobCatalogClient api, IJobArchiveClient archive,
     /// page comes back with the card. Leaving the page or Cancel stops the request, and with it the API's call to Ollama.
     /// </summary>
     public async Task<IActionResult> OnPostFitAsync(
-        string jobId, int p = 1, int archived = 0, string? q = null, [FromForm(Name = "in")] string? scope = null, int? size = null,
+        long jobId, int p = 1, int archived = 0, string? q = null, [FromForm(Name = "in")] string? scope = null, int? size = null,
         string[]? place = null, string[]? mode = null, string? sort = null, CancellationToken ct = default)
     {
         SetState(archived, q, scope, size, place, mode, sort);
@@ -332,7 +335,7 @@ public sealed class IndexModel(IJobCatalogClient api, IJobArchiveClient archive,
     /// The fit card for the pane: <paramref name="fresh"/> (a score just made) with the earlier stored scores, or the
     /// latest stored score; null when there is none. Without the API's history the fresh score is shown alone.
     /// </summary>
-    private async Task<FitView?> StoredFitAsync(string jobId, FitView? fresh, CancellationToken ct)
+    private async Task<FitView?> StoredFitAsync(long jobId, FitView? fresh, CancellationToken ct)
     {
         JobFitHistory? history = null;
         try
@@ -393,7 +396,7 @@ public sealed class IndexModel(IJobCatalogClient api, IJobArchiveClient archive,
         {
             return null;
         }
-        var index = PositionOf(SelectedId);
+        var index = PositionOf(SelectedId.Value);
         if (index < 0)
         {
             return null;
@@ -407,7 +410,7 @@ public sealed class IndexModel(IJobCatalogClient api, IJobArchiveClient archive,
     }
 
     /// <summary>Where a job sits on this page (0-based), or -1.</summary>
-    public int PositionOf(string jobId)
+    public int PositionOf(long jobId)
     {
         if (Jobs is null)
         {
@@ -424,7 +427,7 @@ public sealed class IndexModel(IJobCatalogClient api, IJobArchiveClient archive,
     }
 
     /// <summary>Sends the archive request; the outcome (or the error) is shown by the next page.</summary>
-    private async Task<ArchiveResult?> TryArchiveAsync(IReadOnlyList<string> jobIds, ArchiveReason reason, string? note, CancellationToken ct)
+    private async Task<ArchiveResult?> TryArchiveAsync(IReadOnlyList<long> jobIds, ArchiveReason reason, string? note, CancellationToken ct)
     {
         try
         {
@@ -478,7 +481,7 @@ public sealed class IndexModel(IJobCatalogClient api, IJobArchiveClient archive,
     }
 
     /// <summary>The first job to review at or after <paramref name="from"/>, other than the one that just left.</summary>
-    private static string? FirstToReview(IReadOnlyList<JobSummary> jobs, int from, string archivedId)
+    private static long? FirstToReview(IReadOnlyList<JobSummary> jobs, int from, long archivedId)
     {
         for (var i = Math.Max(0, from); i < jobs.Count; i++)
         {
@@ -496,7 +499,7 @@ public sealed class IndexModel(IJobCatalogClient api, IJobArchiveClient archive,
     /// <paramref name="clearFilter"/> drops the text, <paramref name="clearAll"/> the text and the chips.
     /// </summary>
     public string Link(
-        int page, string? job, bool? showArchived = null, FilterScope? scope = null, int? size = null, bool clearFilter = false,
+        int page, long? job, bool? showArchived = null, FilterScope? scope = null, int? size = null, bool clearFilter = false,
         IReadOnlyList<string>? places = null, IReadOnlyList<string>? modes = null, bool clearAll = false, JobSort? sort = null)
     {
         var archived = showArchived ?? ShowArchived;
@@ -505,7 +508,7 @@ public sealed class IndexModel(IJobCatalogClient api, IJobArchiveClient archive,
         var query = new QueryBuilder { { "p", Math.Max(1, page).ToString() } };
         if (job is not null)
         {
-            query.Add("job", job);
+            query.Add("job", job.Value.ToString());
         }
         if (archived)
         {
@@ -603,7 +606,7 @@ public sealed class IndexModel(IJobCatalogClient api, IJobArchiveClient archive,
             .ToList();
     }
 
-    private RedirectResult Back(int page, string? job)
+    private RedirectResult Back(int page, long? job)
     {
         return Redirect(Link(page, job));
     }

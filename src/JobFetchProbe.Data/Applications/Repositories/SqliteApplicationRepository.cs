@@ -15,10 +15,10 @@ public sealed class SqliteApplicationRepository(IDbContextFactory<JobsDbContext>
 {
     private static readonly string NoteKind = ApplicationNoteKind.Note.ToString();
 
-    public async Task<ApplyOutcome> AddAsync(string jobId, DateTimeOffset at, string firstLine, CancellationToken ct = default)
+    public async Task<ApplyOutcome> AddAsync(long jobId, DateTimeOffset at, string firstLine, CancellationToken ct = default)
     {
         await using var db = await contexts.CreateDbContextAsync(ct);
-        if (!await db.Jobs.AnyAsync(j => j.JobId == jobId, ct))
+        if (!await db.Jobs.AnyAsync(j => j.Id == jobId, ct))
         {
             return ApplyOutcome.NotFound;
         }
@@ -44,13 +44,13 @@ public sealed class SqliteApplicationRepository(IDbContextFactory<JobsDbContext>
     {
         await using var db = await contexts.CreateDbContextAsync(ct);
         var rows = await db.Applications.AsNoTracking()
-            .Join(db.Jobs.AsNoTracking(), a => a.JobId, j => j.JobId, (a, j) => new { Application = a, j.Title, j.Company, j.Location })
+            .Join(db.Jobs.AsNoTracking(), a => a.JobId, j => j.Id, (a, j) => new { Application = a, j.Title, j.Company, j.Location })
             .ToListAsync(ct);
         var notes = await db.ApplicationNotes.AsNoTracking()
             .Where(n => n.Kind == NoteKind)
             .Select(n => new { n.JobId, n.Id, n.At, n.Text })
             .ToListAsync(ct);
-        var byJob = notes.ToLookup(n => n.JobId, StringComparer.Ordinal);
+        var byJob = notes.ToLookup(n => n.JobId);
         var fits = await LatestFits.ReadAsync(db, rows.Select(r => r.Application.JobId).ToList(), ct);
 
         return rows
@@ -63,11 +63,11 @@ public sealed class SqliteApplicationRepository(IDbContextFactory<JobsDbContext>
             .ToList();
     }
 
-    public async Task<ApplicationRecord?> GetAsync(string jobId, CancellationToken ct = default)
+    public async Task<ApplicationRecord?> GetAsync(long jobId, CancellationToken ct = default)
     {
         await using var db = await contexts.CreateDbContextAsync(ct);
         var row = await db.Applications.AsNoTracking()
-            .Join(db.Jobs.AsNoTracking(), a => a.JobId, j => j.JobId, (a, j) => new { Application = a, j.Title, j.Company, j.Location })
+            .Join(db.Jobs.AsNoTracking(), a => a.JobId, j => j.Id, (a, j) => new { Application = a, j.Title, j.Company, j.Location })
             .SingleOrDefaultAsync(r => r.Application.JobId == jobId, ct);
         if (row is null)
         {
@@ -84,7 +84,7 @@ public sealed class SqliteApplicationRepository(IDbContextFactory<JobsDbContext>
         return ToRecord(row.Application, row.Title, row.Company, row.Location, own.FirstOrDefault()?.Text, own.Count, fits.GetValueOrDefault(jobId));
     }
 
-    public async Task<IReadOnlyList<ApplicationNote>> GetNotesAsync(string jobId, CancellationToken ct = default)
+    public async Task<IReadOnlyList<ApplicationNote>> GetNotesAsync(long jobId, CancellationToken ct = default)
     {
         await using var db = await contexts.CreateDbContextAsync(ct);
         var rows = await db.ApplicationNotes.AsNoTracking().Where(n => n.JobId == jobId).ToListAsync(ct);
@@ -95,7 +95,7 @@ public sealed class SqliteApplicationRepository(IDbContextFactory<JobsDbContext>
             .ToList();
     }
 
-    public async Task<bool> ChangeStageAsync(string jobId, ApplicationStage stage, DateTimeOffset at, string line, CancellationToken ct = default)
+    public async Task<bool> ChangeStageAsync(long jobId, ApplicationStage stage, DateTimeOffset at, string line, CancellationToken ct = default)
     {
         await using var db = await contexts.CreateDbContextAsync(ct);
         var row = await db.Applications.SingleOrDefaultAsync(a => a.JobId == jobId, ct);
@@ -110,7 +110,7 @@ public sealed class SqliteApplicationRepository(IDbContextFactory<JobsDbContext>
         return true;
     }
 
-    public async Task<bool> AddNoteAsync(string jobId, string text, DateTimeOffset at, CancellationToken ct = default)
+    public async Task<bool> AddNoteAsync(long jobId, string text, DateTimeOffset at, CancellationToken ct = default)
     {
         await using var db = await contexts.CreateDbContextAsync(ct);
         if (!await db.Applications.AnyAsync(a => a.JobId == jobId, ct))
@@ -122,7 +122,7 @@ public sealed class SqliteApplicationRepository(IDbContextFactory<JobsDbContext>
         return true;
     }
 
-    public async Task<bool> DeleteAsync(string jobId, CancellationToken ct = default)
+    public async Task<bool> DeleteAsync(long jobId, CancellationToken ct = default)
     {
         await using var db = await contexts.CreateDbContextAsync(ct);
         var row = await db.Applications.Include(a => a.Notes).SingleOrDefaultAsync(a => a.JobId == jobId, ct);

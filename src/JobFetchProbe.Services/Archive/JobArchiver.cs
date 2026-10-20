@@ -14,9 +14,8 @@ public sealed class JobArchiver(IJobArchiveRepository archive, IJobCatalog catal
     public async Task<ArchiveResult> ArchiveAsync(ArchiveRequest request, CancellationToken ct = default)
     {
         var ids = (request.JobIds ?? [])
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Select(id => id.Trim())
-            .Distinct(StringComparer.Ordinal)
+            .Where(id => id > 0)
+            .Distinct()
             .ToList();
 
         if (ids.Count == 0)

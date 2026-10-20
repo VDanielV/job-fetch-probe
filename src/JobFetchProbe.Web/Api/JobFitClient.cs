@@ -12,7 +12,7 @@ public sealed class JobFitClient(HttpClient http) : IJobFitClient
 {
     private const string Route = "api/JobFit";
 
-    public async Task<JobFitResult> AssessAsync(string jobId, CancellationToken ct = default)
+    public async Task<JobFitResult> AssessAsync(long jobId, CancellationToken ct = default)
     {
         using var response = await ApiCall.SendAsync(http, () => http.PostAsJsonAsync(Route, new JobFitRequest(jobId), ApiJson.Options, ct), ct);
 
@@ -44,9 +44,9 @@ public sealed class JobFitClient(HttpClient http) : IJobFitClient
         return result;
     }
 
-    public async Task<JobFitHistory?> GetHistoryAsync(string jobId, CancellationToken ct = default)
+    public async Task<JobFitHistory?> GetHistoryAsync(long jobId, CancellationToken ct = default)
     {
-        using var response = await ApiCall.SendAsync(http, () => http.GetAsync($"{Route}/{Uri.EscapeDataString(jobId)}", ct), ct);
+        using var response = await ApiCall.SendAsync(http, () => http.GetAsync($"{Route}/{jobId}", ct), ct);
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
             return null;

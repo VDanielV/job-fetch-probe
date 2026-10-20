@@ -32,6 +32,9 @@ public static class DependencyInjection
             .Validate(s => s.CircuitBreaker.CooldownSeconds is >= 1 and <= 14400, "FetchJobDetails:CircuitBreaker:CooldownSeconds must be 1-14400")
             .Validate(s => s.CircuitBreaker.MaxCooldownSeconds is >= 1 and <= 86400, "FetchJobDetails:CircuitBreaker:MaxCooldownSeconds must be 1-86400")
             .Validate(s => s.CircuitBreaker.StopAfterOpenings is >= 1 and <= 10, "FetchJobDetails:CircuitBreaker:StopAfterOpenings must be 1-10")
+            .Validate(
+                s => s.FitFailuresBeforeOff is >= FetchJobDetailsSettings.MinFitFailuresBeforeOff and <= FetchJobDetailsSettings.MaxFitFailuresBeforeOff,
+                $"FetchJobDetails:FitFailuresBeforeOff must be {FetchJobDetailsSettings.MinFitFailuresBeforeOff}-{FetchJobDetailsSettings.MaxFitFailuresBeforeOff}")
             .ValidateOnStart(); // the API refuses to start with a bad value
 
 
@@ -86,12 +89,13 @@ public static class DependencyInjection
     /// Scores one stored job and keeps the score (<see cref="IJobFitService"/>). Needs <see cref="AddJobRetriever"/>, an
     /// <see cref="IFitDocuments"/>, an <see cref="Abstractions.ILocalChatModel"/>, and an
     /// <see cref="Abstractions.Fit.IJobFitAssessmentStore"/> from the data layer (<c>AddJobFitStore</c>). Transient, for the
-    /// same reason as <see cref="AddChat"/>.
+    /// same reason as <see cref="AddChat"/>. Also lets step 2 score each job it reads (<see cref="FitAfterRead"/>).
     /// </summary>
     public static IServiceCollection AddJobFit(this IServiceCollection services)
     {
         services.TryAddSingleton(TimeProvider.System);
         services.AddTransient<IJobFitService, JobFitService>();
+        services.AddTransient<FetchJobDetails.IJobReadFollowUp, FitAfterRead>(); // step 2 scores each job it reads
         return services;
     }
 

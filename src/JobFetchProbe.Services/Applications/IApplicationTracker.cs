@@ -18,7 +18,7 @@ public interface IApplicationTracker
     /// <paramref name="withNotes"/>; otherwise <see cref="ApplicationConflictException"/> with the number of notes.
     /// False when there is no such application.
     /// </summary>
-    Task<bool> UndoAsync(string jobId, bool withNotes, CancellationToken ct = default);
+    Task<bool> UndoAsync(long jobId, bool withNotes, CancellationToken ct = default);
 
     /// <summary>
     /// One page of the open applications, or the closed ones; optionally only one stage, or only the flagged ones; in the
@@ -28,13 +28,13 @@ public interface IApplicationTracker
         bool closed, ApplicationStage? stage, bool flagged, int page, int pageSize, ApplicationSort sort = ApplicationSort.FollowUp,
         CancellationToken ct = default);
 
-    Task<Application?> GetAsync(string jobId, CancellationToken ct = default);
+    Task<Application?> GetAsync(long jobId, CancellationToken ct = default);
 
     /// <summary>Moves to another stage and adds a Stage line; the same stage again changes nothing.</summary>
-    Task<Application?> SetStageAsync(string jobId, StageRequest request, CancellationToken ct = default);
+    Task<Application?> SetStageAsync(long jobId, StageRequest request, CancellationToken ct = default);
 
     /// <summary>Adds the owner's note, dated now.</summary>
-    Task<Application?> AddNoteAsync(string jobId, NoteRequest request, CancellationToken ct = default);
+    Task<Application?> AddNoteAsync(long jobId, NoteRequest request, CancellationToken ct = default);
 
     /// <summary>The numbers for the menu.</summary>
     Task<ApplicationsSummary> GetSummaryAsync(CancellationToken ct = default);

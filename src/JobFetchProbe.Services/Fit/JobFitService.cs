@@ -18,12 +18,12 @@ public sealed class JobFitService(
 {
     public async Task<JobFitResult?> AssessAsync(JobFitRequest request, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(request.JobId))
+        if (request.JobId <= 0)
         {
             throw new JobFitRequestException("jobId", "Choose a job to score.");
         }
 
-        var job = await jobs.GetJobAsync(request.JobId.Trim(), ct);
+        var job = await jobs.GetJobAsync(request.JobId, ct);
         if (job is null)
         {
             return null;
@@ -41,13 +41,13 @@ public sealed class JobFitService(
         return result;
     }
 
-    public async Task<JobFitHistory?> GetHistoryAsync(string jobId, CancellationToken ct = default)
+    public async Task<JobFitHistory?> GetHistoryAsync(long jobId, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(jobId))
+        if (jobId <= 0)
         {
             return null;
         }
-        var job = await jobs.GetJobAsync(jobId.Trim(), ct);
+        var job = await jobs.GetJobAsync(jobId, ct);
         if (job is null)
         {
             return null;
@@ -69,7 +69,7 @@ public sealed class JobFitService(
     /// Stores the score. A failure to store is logged and the score is still returned: scoring is never lost because of
     /// the store. A cancelled request stores nothing.
     /// </summary>
-    private async Task KeepAsync(string jobId, JobFitResult result, string? modelName, string profileVersion, CancellationToken ct)
+    private async Task KeepAsync(long jobId, JobFitResult result, string? modelName, string profileVersion, CancellationToken ct)
     {
         var assessment = new JobFitAssessment(
             0, result.AssessedAt!.Value, result.Fit, result.Decision, result.HardSkip, result.Reason, result.MissingInformation,

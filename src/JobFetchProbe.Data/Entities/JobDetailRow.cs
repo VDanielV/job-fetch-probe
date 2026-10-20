@@ -4,7 +4,8 @@ namespace JobFetchProbe.Data.Entities;
 public sealed class JobDetailRow
 {
     public int Id { get; set; }
-    public string JobId { get; set; } = string.Empty;
+    /// <summary>The job (<c>Jobs.Id</c>).</summary>
+    public long JobId { get; set; }
     public int Position { get; set; }
     public string Label { get; set; } = string.Empty;
     public string Value { get; set; } = string.Empty;

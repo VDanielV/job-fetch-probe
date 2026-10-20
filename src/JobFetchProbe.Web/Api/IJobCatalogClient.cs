@@ -20,5 +20,5 @@ public interface IJobCatalogClient
         CancellationToken ct = default);
 
     /// <summary>GET api/JobCatalog/{jobId}: one job in full, or null if the API answers 404.</summary>
-    Task<StoredJob?> GetJobAsync(string jobId, CancellationToken ct = default);
+    Task<StoredJob?> GetJobAsync(long jobId, CancellationToken ct = default);
 }

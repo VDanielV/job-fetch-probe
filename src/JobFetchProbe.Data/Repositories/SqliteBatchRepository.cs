@@ -23,7 +23,8 @@ public sealed class SqliteBatchRepository(IDbContextFactory<JobsDbContext> conte
             batchId = $"{batch.BatchId}_{n}";
         }
 
-        await db.UpsertCardsAsync(batch.Jobs, batch.CreatedAt, ct);
+        var jobs = await db.UpsertCardsAsync(batch.Jobs, batch.CreatedAt, ct);
+        await db.SaveChangesAsync(ct); // new jobs get their Id here, inside the transaction
         db.Listings.Add(new ListingRow
         {
             BatchId = batchId,
@@ -42,7 +43,7 @@ public sealed class SqliteBatchRepository(IDbContextFactory<JobsDbContext> conte
             Jobs = batch.Jobs.Select((c, i) => new ListingJobRow
             {
                 BatchId = batchId,
-                JobId = c.JobId,
+                JobId = jobs[JobRowMapping.KeyOf(c)].Id,
                 Position = i,
                 Url = c.Url.AbsoluteUri,
                 Title = c.Title,

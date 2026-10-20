@@ -12,11 +12,11 @@ public interface IJobRepository
     /// </summary>
     Task<IReadOnlyList<JobListing>> GetUnreadAsync(CancellationToken ct = default);
 
-    /// <summary>Stores what the job page showed and marks the job as read.</summary>
-    Task SaveDescriptionAsync(JobPosting job, CancellationToken ct = default);
+    /// <summary>Stores what the job page showed and marks the job as read. Returns the job's app ID.</summary>
+    Task<long> SaveDescriptionAsync(JobPosting job, CancellationToken ct = default);
 
     /// <summary>Records a failed attempt. <paramref name="gone"/>: the page no longer exists (HTTP 404/410), so it is not tried again.</summary>
-    Task SaveFailureAsync(string jobId, JobResultStatus status, bool gone, string message, CancellationToken ct = default);
+    Task SaveFailureAsync(string source, string sourceJobId, JobResultStatus status, bool gone, string message, CancellationToken ct = default);
 
     /// <summary>Number of jobs with a description.</summary>
     Task<int> CountReadAsync(CancellationToken ct = default);

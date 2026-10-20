@@ -15,7 +15,7 @@ namespace JobFetchProbe.Api.Controllers;
 public sealed class JobFitController(IJobFitService fits) : ControllerBase
 {
     /// <summary>Scores the job and returns the decision, the fit, and the reason.</summary>
-    /// <remarks>POST api/JobFit { "jobId": "4476446382" }</remarks>
+    /// <remarks>POST api/JobFit { "jobId": 57 }</remarks>
     /// <response code="200">Apply, Maybe, or Skip, with a fit from 0 to 100.</response>
     /// <response code="400">No job id, or the job has no description yet.</response>
     /// <response code="404">That id is not in the database.</response>
@@ -48,15 +48,15 @@ public sealed class JobFitController(IJobFitService fits) : ControllerBase
     }
 
     /// <summary>Every stored score of the job, newest first, and the version of the Fit files now (to mark older scores).</summary>
-    /// <remarks>GET api/JobFit/4476446382</remarks>
+    /// <remarks>GET api/JobFit/57</remarks>
     /// <response code="200">The scores; an empty list when the job was never scored.</response>
     /// <response code="404">That id is not in the database.</response>
     /// <response code="503">The database is missing.</response>
-    [HttpGet("{jobId}")]
+    [HttpGet("{jobId:long}")]
     [ProducesResponseType<JobFitHistory>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
-    public async Task<ActionResult<JobFitHistory>> History(string jobId, CancellationToken ct = default)
+    public async Task<ActionResult<JobFitHistory>> History(long jobId, CancellationToken ct = default)
     {
         var history = await fits.GetHistoryAsync(jobId, ct);
         if (history is null)

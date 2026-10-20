@@ -10,6 +10,8 @@ namespace JobFetchProbe.Models.FetchJobDetails;
 /// <param name="Requests">Requests sent in this run.</param>
 /// <param name="CircuitOpenings">How many times the circuit breaker opened in this run.</param>
 /// <param name="StoppedReason">Why the run stopped early (circuit breaker, or cancellation), or null.</param>
+/// <param name="Assessed">Jobs read in this run whose fit was scored.</param>
+/// <param name="NotAssessed">Jobs read in this run whose fit could not be scored (or not tried: scoring was off).</param>
 public sealed record JobDetailsFetchResult(
     int Unread,
     int Fetched,
@@ -20,4 +22,6 @@ public sealed record JobDetailsFetchResult(
     int Requests,
     int CircuitOpenings,
     TimeSpan Elapsed,
-    string? StoppedReason);
+    string? StoppedReason,
+    int Assessed = 0,
+    int NotAssessed = 0);

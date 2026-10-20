@@ -95,10 +95,10 @@
                                 <td class="pick">
                                     @if (job.Archive is null)
                                     {
-                                        <input type="checkbox" name="jobIds" value="@job.JobId" aria-label="Tick @(job.Title ?? job.JobId)" data-archive-pick />
+                                        <input type="checkbox" name="jobIds" value="@job.JobId" aria-label="Tick @(job.Title ?? job.SourceJobId)" data-archive-pick />
                                     }
                                 </td>
-                                <td class="title"><a href="@link">@Highlight.Html(job.Title ?? job.JobId, jobs.Terms)</a>
+                                <td class="title"><a href="@link">@Highlight.Html(job.Title ?? job.SourceJobId, jobs.Terms)</a>
                                     @if (job.Archive is { } a)
                                     {
                                         <span class="archived-tag">@JobFetchProbe.Web.Pages.ArchiveReasonText.Label(a.Reason)</span>
@@ -205,7 +205,7 @@
                 <a class="close" href="@Model.Link(jobs.Page, null)" aria-label="Close the details" title="Close">✕</a>
                 @if (Model.Selected is { } s)
                 {
-                    <span>#<span class="detail-id">@s.JobId</span></span>
+                    <span>#<span class="detail-id">@s.JobId</span> <span class="source-id">· @JobSourceText.Of(s.Source, s.SourceJobId)</span></span>
                     <span class="status @s.Status">@s.Status</span>
                 }
             </div>
@@ -216,7 +216,7 @@
             }
             else
             {
-                <h2>@Highlight.Html(job.Title ?? job.JobId, jobs.Terms)</h2>
+                <h2>@Highlight.Html(job.Title ?? job.SourceJobId, jobs.Terms)</h2>
                 <p class="where">@string.Join(" · ", new[] { job.Company, job.Location }.Where(s => !string.IsNullOrWhiteSpace(s)))</p>
                 <div class="pane-actions">
                     <a class="button" href="@job.Url" target="_blank" rel="noopener noreferrer">Open the job page ↗</a>

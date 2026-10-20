@@ -3,7 +3,11 @@ namespace JobFetchProbe.Models.Search;
 /// <summary>One result card on a search results page.</summary>
 public sealed record JobListing
 {
-    public required string JobId { get; init; }
+    /// <summary>Where the job comes from (<see cref="Jobs.JobSources"/>); LinkedIn unless set.</summary>
+    public string Source { get; init; } = Jobs.JobSources.LinkedIn;
+
+    /// <summary>The site's own ID of the job, e.g. LinkedIn's 4476446382.</summary>
+    public required string SourceJobId { get; init; }
 
     /// <summary>The job's page, without tracking parameters. Always an absolute http(s) address.</summary>
     public required Uri Url { get; init; }

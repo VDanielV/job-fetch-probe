@@ -18,6 +18,6 @@ public sealed record JobSearchBatch
     /// <summary>Number of unique jobs in <see cref="Jobs"/>.</summary>
     public int Count => Jobs.Count;
 
-    /// <summary>Unique by JobId; the first file that lists a job wins.</summary>
+    /// <summary>Unique by SourceJobId; the first file that lists a job wins.</summary>
     public IReadOnlyList<JobListing> Jobs { get; init; } = [];
 }

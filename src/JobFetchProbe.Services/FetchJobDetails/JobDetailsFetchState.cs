@@ -29,6 +29,18 @@ internal sealed class JobDetailsFetchState(
 
     public int Requests { get; set; }
 
+    /// <summary>Jobs read in this run whose fit was scored.</summary>
+    public int Assessed { get; set; }
+
+    /// <summary>Jobs read in this run whose fit was not scored (it failed, or scoring was off).</summary>
+    public int NotAssessed { get; set; }
+
+    /// <summary>Failed scores in a row; reset by a successful one.</summary>
+    public int AssessFailuresInRow { get; set; }
+
+    /// <summary>Scoring is off for the rest of the run.</summary>
+    public bool AssessOff { get; set; }
+
     /// <summary>Why the run stopped early; null while it goes on.</summary>
     public string? Stopped { get; set; }
 

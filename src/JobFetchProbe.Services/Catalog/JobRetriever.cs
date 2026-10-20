@@ -135,11 +135,14 @@ public sealed class JobRetriever(IJobCatalog catalog) : IJobRetriever
         return new JobSummaryPage(rows, page, pageSize, matches.Count, candidates.ArchivedCount, terms, unfiltered, placeChips, modeChips);
     }
 
-    public async Task<StoredJob?> GetJobAsync(string jobId, CancellationToken ct = default)
+    public async Task<StoredJob?> GetJobAsync(long jobId, CancellationToken ct = default)
     {
         EnsureAvailable();
-        var id = jobId?.Trim();
-        return string.IsNullOrEmpty(id) ? null : await catalog.GetAsync(id, ct);
+        if (jobId <= 0)
+        {
+            return null;
+        }
+        return await catalog.GetAsync(jobId, ct);
     }
 
     private void EnsureAvailable()

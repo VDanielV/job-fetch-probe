@@ -26,9 +26,8 @@ namespace JobFetchProbe.Data.Migrations
                     b.Property<DateTimeOffset>("At")
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("JobId")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                    b.Property<long>("JobId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Kind")
                         .IsRequired()
@@ -49,8 +48,8 @@ namespace JobFetchProbe.Data.Migrations
 
             modelBuilder.Entity("JobFetchProbe.Data.Applications.Entities.ApplicationRow", b =>
                 {
-                    b.Property<string>("JobId")
-                        .HasColumnType("TEXT");
+                    b.Property<long>("JobId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<DateTimeOffset>("AppliedAt")
                         .HasColumnType("TEXT");
@@ -72,8 +71,8 @@ namespace JobFetchProbe.Data.Migrations
 
             modelBuilder.Entity("JobFetchProbe.Data.Archive.Entities.ArchivedJobRow", b =>
                 {
-                    b.Property<string>("JobId")
-                        .HasColumnType("TEXT");
+                    b.Property<long>("JobId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<DateTimeOffset>("ArchivedAt")
                         .HasColumnType("TEXT");
@@ -98,9 +97,8 @@ namespace JobFetchProbe.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("JobId")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                    b.Property<long>("JobId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Label")
                         .IsRequired()
@@ -122,8 +120,9 @@ namespace JobFetchProbe.Data.Migrations
 
             modelBuilder.Entity("JobFetchProbe.Data.Entities.JobRow", b =>
                 {
-                    b.Property<string>("JobId")
-                        .HasColumnType("TEXT");
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Company")
                         .HasColumnType("TEXT");
@@ -155,6 +154,16 @@ namespace JobFetchProbe.Data.Migrations
                     b.Property<DateTimeOffset?>("RetrievedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceJobId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -167,11 +176,14 @@ namespace JobFetchProbe.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.HasKey("JobId");
+                    b.HasKey("Id");
 
                     b.HasIndex("Company");
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("Source", "SourceJobId")
+                        .IsUnique();
 
                     b.ToTable("Jobs", (string)null);
                 });
@@ -181,8 +193,8 @@ namespace JobFetchProbe.Data.Migrations
                     b.Property<string>("BatchId")
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("JobId")
-                        .HasColumnType("TEXT");
+                    b.Property<long>("JobId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Company")
                         .HasColumnType("TEXT");
@@ -283,9 +295,8 @@ namespace JobFetchProbe.Data.Migrations
                     b.Property<bool>("HardSkip")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("JobId")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                    b.Property<long>("JobId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("MissingInformation")
                         .IsRequired()

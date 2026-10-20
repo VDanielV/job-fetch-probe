@@ -65,7 +65,7 @@ public static class JobFitPrompt
     {
         var posting = JsonSerializer.Serialize(new
         {
-            job.JobId,
+            JobId = job.SourceJobId,
             job.Title,
             job.Company,
             job.Location,

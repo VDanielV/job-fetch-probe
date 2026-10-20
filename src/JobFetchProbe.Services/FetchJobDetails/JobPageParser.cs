@@ -65,7 +65,7 @@ public sealed partial class JobPageParser : IJobPageParser
 
         return new JobPosting
         {
-            JobId = jobId,
+            SourceJobId = jobId,
             SourceUrl = sourceUrl,
             Title = title,
             Company = HtmlQuery.ClassText(html, "topcard__org-name-link", "a"),
@@ -81,7 +81,7 @@ public sealed partial class JobPageParser : IJobPageParser
     {
         return JsonLd.ReadFirst(html, "JobPosting", job => new JobPosting
         {
-            JobId = jobId,
+            SourceJobId = jobId,
             SourceUrl = sourceUrl,
             Title = JsonLd.String(job, "title"),
             Company = JsonLd.String(job, "hiringOrganization", "name") ?? JsonLd.String(job, "hiringOrganization"),
@@ -138,7 +138,7 @@ public sealed partial class JobPageParser : IJobPageParser
 
         return new JobPosting
         {
-            JobId = jobId,
+            SourceJobId = jobId,
             SourceUrl = sourceUrl,
             Title = title,
             Company = HtmlQuery.Meta(html, "og:site_name"),

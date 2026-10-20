@@ -6,8 +6,8 @@ namespace JobFetchProbe.Services.Abstractions.Fit;
 public interface IJobFitAssessmentStore
 {
     /// <summary>Stores one assessment of the job (its Id is given by the store).</summary>
-    Task AddAsync(string jobId, JobFitAssessment assessment, CancellationToken ct = default);
+    Task AddAsync(long jobId, JobFitAssessment assessment, CancellationToken ct = default);
 
     /// <summary>Every assessment of the job, newest first; empty when it was never assessed.</summary>
-    Task<IReadOnlyList<JobFitAssessment>> GetAsync(string jobId, CancellationToken ct = default);
+    Task<IReadOnlyList<JobFitAssessment>> GetAsync(long jobId, CancellationToken ct = default);
 }

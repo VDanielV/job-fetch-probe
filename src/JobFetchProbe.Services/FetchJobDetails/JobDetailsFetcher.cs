@@ -17,12 +17,17 @@ namespace JobFetchProbe.Services.FetchJobDetails;
 /// circuit, tried once more) decides whether to continue. When the circuit has opened StopAfterOpenings times, the run
 /// stops. A 404 or 410 marks only that job, as gone. The pause and the circuit breaker come from
 /// <see cref="FetchJobDetailsSettings"/>.
+///
+/// After a description is stored, the job's follow-up runs (<see cref="IJobReadFollowUp"/>: scoring its fit) before
+/// the pause, so its time adds to the gap between two requests. A failed follow-up never stops the run and never
+/// touches the circuit breaker; after FitFailuresBeforeOff failures in a row it is off for the rest of the run.
 /// </summary>
 public sealed class JobDetailsFetcher(
     IJobRepository repository,
     IJobService jobs,
     IOptions<FetchJobDetailsSettings> settings,
-    TimeProvider time) : IJobDetailsFetcher
+    TimeProvider time,
+    IEnumerable<IJobReadFollowUp> followUps) : IJobDetailsFetcher
 {
     /// <summary>How often the time left is reported while the circuit is open.</summary>
     public static readonly TimeSpan WaitReportInterval = TimeSpan.FromSeconds(30);
@@ -65,9 +70,13 @@ public sealed class JobDetailsFetcher(
             }
 
             var wasHalfOpen = run.Breaker.State == CircuitState.HalfOpen;
-            await StoreAsync(run, job, result);
+            var readId = await StoreAsync(run, job, result);
             FetchOutcome.TellBreaker(run.Breaker, job, result);
             ReportJob(run, i, job, result);
+            if (readId is { } jobId && !await FollowUpAsync(run, i, job, jobId, ct))
+            {
+                break;
+            }
 
             if (AfterResult(run, wasHalfOpen))
             {
@@ -98,7 +107,9 @@ public sealed class JobDetailsFetcher(
             run.Requests,
             run.Breaker.Openings,
             run.Clock.Elapsed,
-            run.Stopped);
+            run.Stopped,
+            run.Assessed,
+            run.NotAssessed);
     }
 
     /// <summary>While the circuit is open: waits for the cooldown, reporting the time left, until one trial request is allowed.</summary>
@@ -175,7 +186,7 @@ public sealed class JobDetailsFetcher(
             return null;
         }
         run.Clock.AddActiveSince(requestStarted);
-        run.Attempted.Add(job.JobId);
+        run.Attempted.Add(job.SourceJobId);
         return result;
     }
 
@@ -183,20 +194,88 @@ public sealed class JobDetailsFetcher(
     /// Stores the outcome before anything else, so it is kept whatever happens next. Saving is not cancelled:
     /// A stop (the Stop button, or the API stopping) takes effect after the current job, never in the middle of a write.
     /// </summary>
-    private async Task StoreAsync(JobDetailsFetchState run, JobListing job, JobResult result)
+    /// <returns>The job's app ID when its description was stored; null after a failure.</returns>
+    private async Task<long?> StoreAsync(JobDetailsFetchState run, JobListing job, JobResult result)
     {
         if (FetchOutcome.IsRead(result))
         {
             // Keep the listed ID: it is the reliable one (the page may lack a canonical link).
-            await repository.SaveDescriptionAsync(result.Job! with { JobId = job.JobId }, CancellationToken.None);
-            run.Failed.Remove(job.JobId);
+            var id = await repository.SaveDescriptionAsync(result.Job! with { Source = job.Source, SourceJobId = job.SourceJobId }, CancellationToken.None);
+            run.Failed.Remove(job.SourceJobId);
             run.Fetched++;
+            return id;
+        }
+
+        await repository.SaveFailureAsync(job.Source, job.SourceJobId, result.Status, FetchOutcome.IsGone(result), result.Message ?? string.Empty, CancellationToken.None);
+        run.Failed.Add(job.SourceJobId);
+        return null;
+    }
+
+    /// <summary>
+    /// The follow-up of a job just read (scoring its fit), when it is on. Its time counts as active time for the
+    /// estimate. A failure is reported and counted; enough in a row switch it off for the rest of the run.
+    /// </summary>
+    /// <returns>False if the run was stopped meanwhile.</returns>
+    private async Task<bool> FollowUpAsync(JobDetailsFetchState run, int index, JobListing job, long jobId, CancellationToken ct)
+    {
+        var followUp = followUps.FirstOrDefault();
+        if (followUp is null || !settings.Value.AssessFit)
+        {
+            return true;
+        }
+        if (run.AssessOff)
+        {
+            run.NotAssessed++;
+            return true;
+        }
+
+        var started = run.Clock.Elapsed;
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        JobReadFollowUpResult outcome;
+        try
+        {
+            outcome = await followUp.AfterReadAsync(jobId, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            run.Stopped = JobDetailsFetchState.CancelledReason;
+            return false;
+        }
+        catch (OperationCanceledException ex)
+        {
+            outcome = new JobReadFollowUpResult(null, "the local model did not answer in time: " + ex.Message);
+        }
+        run.Clock.AddActiveSince(started);
+
+        if (outcome.Fit is not null)
+        {
+            run.Assessed++;
+            run.AssessFailuresInRow = 0;
         }
         else
         {
-            await repository.SaveFailureAsync(job.JobId, result.Status, FetchOutcome.IsGone(result), result.Message ?? string.Empty, CancellationToken.None);
-            run.Failed.Add(job.JobId);
+            run.NotAssessed++;
+            run.AssessFailuresInRow++;
         }
+        run.Report(JobDetailsFetchEventKind.Assessed, e => e with
+        {
+            Index = index + 1,
+            Total = run.Unread.Count,
+            Job = job,
+            Fit = outcome.Fit,
+            Took = watch.Elapsed,
+            Message = outcome.Failure,
+        });
+
+        if (outcome.Fit is null && run.AssessFailuresInRow >= settings.Value.FitFailuresBeforeOff)
+        {
+            run.AssessOff = true;
+            run.Report(JobDetailsFetchEventKind.AssessOff, e => e with
+            {
+                Message = $"{run.AssessFailuresInRow} scores failed in a row; scoring is off for the rest of this run (is Ollama running?)",
+            });
+        }
+        return true;
     }
 
     private static void ReportJob(JobDetailsFetchState run, int index, JobListing job, JobResult result)

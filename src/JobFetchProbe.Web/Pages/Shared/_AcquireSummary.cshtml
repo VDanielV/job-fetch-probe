@@ -87,6 +87,19 @@
                 }
             </dd>
         </div>
+        @if (v.Fit is { } fit)
+        {
+            <div>
+                <dt>Fit</dt>
+                <dd>
+                    <span>@fit.Scored scored, @fit.NotScored not scored</span>
+                    @if (fit.Off)
+                    {
+                        <span class="sub">scoring was switched off after failed scores in a row (is Ollama running?)</span>
+                    }
+                </dd>
+            </div>
+        }
         @if (d is not null)
         {
             <div>

@@ -9,7 +9,7 @@ namespace JobFetchProbe.Data.Fit;
 internal static class LatestFits
 {
     /// <param name="jobIds">Only these jobs; null for every job.</param>
-    public static async Task<Dictionary<string, FitScore>> ReadAsync(JobsDbContext db, IReadOnlyCollection<string>? jobIds, CancellationToken ct)
+    public static async Task<Dictionary<long, FitScore>> ReadAsync(JobsDbContext db, IReadOnlyCollection<long>? jobIds, CancellationToken ct)
     {
         var query = db.JobFitAssessments.AsNoTracking();
         if (jobIds is not null)
@@ -20,8 +20,8 @@ internal static class LatestFits
             .Select(a => new { a.Id, a.JobId, a.AssessedAt, a.Fit, a.Decision, a.HardSkip })
             .ToListAsync(ct);
 
-        var latest = new Dictionary<string, FitScore>(StringComparer.Ordinal);
-        foreach (var group in rows.GroupBy(r => r.JobId, StringComparer.Ordinal))
+        var latest = new Dictionary<long, FitScore>();
+        foreach (var group in rows.GroupBy(r => r.JobId))
         {
             var last = group.OrderByDescending(r => r.AssessedAt).ThenByDescending(r => r.Id).First();
             latest[group.Key] = new FitScore(last.Fit, Enum.Parse<JobFitDecision>(last.Decision), last.HardSkip, last.AssessedAt);

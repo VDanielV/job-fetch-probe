@@ -31,7 +31,7 @@ internal static class FetchOutcome
         }
         else if (result.Status == JobResultStatus.Blocked)
         {
-            breaker.RecordRefusal($"{job.Url.Host} refused the request for job {job.JobId} (status {result.HttpStatus}: refusal or sign-in page)");
+            breaker.RecordRefusal($"{job.Url.Host} refused the request for job {job.SourceJobId} (status {result.HttpStatus}: refusal or sign-in page)");
         }
         else if (result.HttpStatus is 0 or >= 500)
         {

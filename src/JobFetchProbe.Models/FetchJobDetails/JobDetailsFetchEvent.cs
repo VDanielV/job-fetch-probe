@@ -1,3 +1,4 @@
+using JobFetchProbe.Models.Fit;
 using JobFetchProbe.Models.Jobs;
 using JobFetchProbe.Models.Search;
 
@@ -43,4 +44,10 @@ public sealed record JobDetailsFetchEvent(JobDetailsFetchEventKind Kind, DateTim
 
     /// <summary>Started: the longest wait, after doubling.</summary>
     public TimeSpan? MaxCooldown { get; init; }
+
+    /// <summary>Assessed: the job's fit, or null when it could not be scored (Message says why).</summary>
+    public JobFitResult? Fit { get; init; }
+
+    /// <summary>Assessed: how long the scoring took.</summary>
+    public TimeSpan? Took { get; init; }
 }

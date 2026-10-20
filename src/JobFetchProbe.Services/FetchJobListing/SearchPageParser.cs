@@ -74,7 +74,7 @@ public sealed partial class SearchPageParser : ISearchPageParser
 
             jobs.Add(new JobListing
             {
-                JobId = id,
+                SourceJobId = id,
                 Url = CardUrl(card, id, pageUrl),
                 Title = HtmlQuery.ClassText(card, "base-search-card__title"),
                 Company = HtmlQuery.ClassText(card, "base-search-card__subtitle"),
@@ -120,7 +120,7 @@ public sealed partial class SearchPageParser : ISearchPageParser
 
             jobs.Add(new JobListing
             {
-                JobId = id,
+                SourceJobId = id,
                 Url = CardUrl(card, id, pageUrl),
                 Title = SignedInTitle(paragraphs.ElementAtOrDefault(0)),
                 Company = TextAt(paragraphs, 1),
@@ -197,7 +197,7 @@ public sealed partial class SearchPageParser : ISearchPageParser
                 continue;
             }
 
-            jobs.Add(new JobListing { JobId = id, Url = url, Title = HtmlQuery.TextOrNull(m.Groups[2].Value) });
+            jobs.Add(new JobListing { SourceJobId = id, Url = url, Title = HtmlQuery.TextOrNull(m.Groups[2].Value) });
         }
 
         return jobs;

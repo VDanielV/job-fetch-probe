@@ -15,7 +15,7 @@ internal static class FitRowMapping
             row.ProfileVersion);
     }
 
-    public static JobFitAssessmentRow ToRow(this JobFitAssessment assessment, string jobId)
+    public static JobFitAssessmentRow ToRow(this JobFitAssessment assessment, long jobId)
     {
         return new JobFitAssessmentRow
         {

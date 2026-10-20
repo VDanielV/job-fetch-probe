@@ -4,7 +4,8 @@ namespace JobFetchProbe.Data.Applications.Entities;
 public sealed class ApplicationNoteRow
 {
     public long Id { get; set; }
-    public string JobId { get; set; } = string.Empty;
+    /// <summary>The job (<c>Jobs.Id</c>).</summary>
+    public long JobId { get; set; }
     public DateTimeOffset At { get; set; }
 
     /// <summary>An <c>ApplicationNoteKind</c>, stored by name.</summary>

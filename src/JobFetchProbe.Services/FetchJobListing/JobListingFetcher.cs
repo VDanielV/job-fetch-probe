@@ -67,7 +67,7 @@ public sealed class JobListingFetcher(
             var added = 0;
             foreach (var job in read.Search.Jobs)
             {
-                if (seen.Add(job.JobId))
+                if (seen.Add(job.SourceJobId))
                 {
                     jobs.Add(job);
                     added++;

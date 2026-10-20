@@ -7,6 +7,7 @@ using JobFetchProbe.Data.Entities;
 using JobFetchProbe.Data.Fit.Entities;
 using JobFetchProbe.Models.Applications;
 using JobFetchProbe.Models.Fit;
+using JobFetchProbe.Models.Jobs;
 using Microsoft.EntityFrameworkCore;
 
 const string BatchId = "notion-migration";
@@ -22,8 +23,11 @@ await using var db = new JobsDbContext(dbOptions);
 
 if (!options.Apply)
 {
-    var existing = await db.Jobs.AsNoTracking().Select(j => j.JobId).ToHashSetAsync(StringComparer.Ordinal);
-    var archived = await db.ArchivedJobs.AsNoTracking().Select(j => j.JobId).ToHashSetAsync(StringComparer.Ordinal);
+    // The imported IDs are the jobs' SourceJobId (decision 7b of docs/spec-job-identity.md).
+    var existing = await db.Jobs.AsNoTracking().Select(j => j.SourceJobId).ToHashSetAsync(StringComparer.Ordinal);
+    var archived = await db.ArchivedJobs.AsNoTracking()
+        .Join(db.Jobs.AsNoTracking(), a => a.JobId, j => j.Id, (a, j) => j.SourceJobId)
+        .ToHashSetAsync(StringComparer.Ordinal);
     var plan = rows.Select(r => ImportRow.Create(r)).ToList();
     Console.WriteLine($"Dry run: {rows.Count} Notion applications. No database changes were made.");
     PrintCounts("Status", rows.GroupBy(r => r.Status ?? "Missing").Select(g => (g.Key, g.Count())));
@@ -64,7 +68,9 @@ var addedFits = 0;
 foreach (var raw in rows)
 {
     var row = ImportRow.Create(raw);
-    if (await db.ArchivedJobs.AnyAsync(a => a.JobId == row.JobId))
+    var jobSource = SourceOf(row.JobId);
+    var job = await db.Jobs.SingleOrDefaultAsync(j => j.Source == jobSource && j.SourceJobId == row.JobId);
+    if (job is not null && await db.ArchivedJobs.AnyAsync(a => a.JobId == job.Id))
     {
         skippedArchived++;
         continue;
@@ -75,12 +81,12 @@ foreach (var raw in rows)
         continue;
     }
 
-    var job = await db.Jobs.SingleOrDefaultAsync(j => j.JobId == row.JobId);
     if (job is null)
     {
         job = new JobRow
         {
-            JobId = row.JobId,
+            Source = jobSource,
+            SourceJobId = row.JobId,
             Url = row.Url,
             Title = raw.Role,
             Company = raw.Company,
@@ -89,15 +95,16 @@ foreach (var raw in rows)
             Status = JobStatus.External,
         };
         db.Jobs.Add(job);
+        await db.SaveChangesAsync(); // gives the job its Id, inside the transaction
         addedJobs++;
     }
 
-    if (!await db.ListingJobs.AnyAsync(j => j.BatchId == BatchId && j.JobId == row.JobId))
+    if (!await db.ListingJobs.AnyAsync(j => j.BatchId == BatchId && j.JobId == job.Id))
     {
         db.ListingJobs.Add(new ListingJobRow
         {
             BatchId = BatchId,
-            JobId = row.JobId,
+            JobId = job.Id,
             Position = imported,
             Url = job.Url,
             Title = job.Title,
@@ -108,18 +115,18 @@ foreach (var raw in rows)
         addedCards++;
     }
 
-    if (!await db.Applications.AnyAsync(a => a.JobId == row.JobId))
+    if (!await db.Applications.AnyAsync(a => a.JobId == job.Id))
     {
         var application = new ApplicationRow
         {
-            JobId = row.JobId,
+            JobId = job.Id,
             AppliedAt = row.AppliedAt,
             Stage = row.Stage.ToString(),
             StageChangedAt = row.Stage == ApplicationStage.Applied ? row.AppliedAt : row.StageChangedAt,
         };
         application.Notes.Add(new ApplicationNoteRow
         {
-            JobId = row.JobId,
+            JobId = job.Id,
             At = row.AppliedAt,
             Kind = ApplicationNoteKind.Applied.ToString(),
             Text = $"Imported from Notion {raw.Id}.",
@@ -128,7 +135,7 @@ foreach (var raw in rows)
         {
             application.Notes.Add(new ApplicationNoteRow
             {
-                JobId = row.JobId,
+                JobId = job.Id,
                 At = row.StageChangedAt,
                 Kind = ApplicationNoteKind.Stage.ToString(),
                 Text = $"Imported status: {raw.Status}.",
@@ -138,7 +145,7 @@ foreach (var raw in rows)
         {
             application.Notes.Add(new ApplicationNoteRow
             {
-                JobId = row.JobId,
+                JobId = job.Id,
                 At = row.StageChangedAt,
                 Kind = ApplicationNoteKind.Note.ToString(),
                 Text = note,
@@ -147,11 +154,11 @@ foreach (var raw in rows)
         db.Applications.Add(application);
     }
 
-    if (raw.Fit is not null && !await db.JobFitAssessments.AnyAsync(a => a.JobId == row.JobId && a.Model == "score-card"))
+    if (raw.Fit is not null && !await db.JobFitAssessments.AnyAsync(a => a.JobId == job.Id && a.Model == "score-card"))
     {
         db.JobFitAssessments.Add(new JobFitAssessmentRow
         {
-            JobId = row.JobId,
+            JobId = job.Id,
             AssessedAt = now,
             Fit = (int)Math.Round(raw.Fit.Value, MidpointRounding.AwayFromZero),
             Decision = Decision(raw.Fit.Value).ToString(),
@@ -171,6 +178,16 @@ source.NewJobs = addedJobs;
 await db.SaveChangesAsync();
 await transaction.CommitAsync();
 Console.WriteLine($"Imported {imported} applications; {addedJobs} jobs, {addedCards} listing cards, and {addedFits} score-card fits added. {skippedArchived} archived conflicts and {skippedDuplicate} duplicate jobs skipped.");
+
+// A plain number is a LinkedIn posting; anything else is the import's own ID (Notion-A027, InfoJobs-A071…).
+static string SourceOf(string id)
+{
+    if (id.Length > 0 && id.All(char.IsAsciiDigit))
+    {
+        return JobSources.LinkedIn;
+    }
+    return JobSources.Notion;
+}
 
 static IEnumerable<string> Notes(NotionApplication row)
 {

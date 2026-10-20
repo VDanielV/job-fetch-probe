@@ -146,6 +146,44 @@ public sealed class AcquisitionView
         }
     }
 
+    /// <summary>Step 2's fit lines: scored, not scored, and whether scoring was switched off; null when the run scored nothing.</summary>
+    public FitTally? Fit
+    {
+        get
+        {
+            if (Details is null)
+            {
+                return null;
+            }
+            var scored = 0;
+            var notScored = 0;
+            var off = false;
+            foreach (var e in Details.Entries)
+            {
+                if (e.Kind == JobDetailsJournalEntryKind.AssessOff)
+                {
+                    off = true;
+                }
+                else if (e.Kind == JobDetailsJournalEntryKind.Assessed)
+                {
+                    if ((e.Message ?? string.Empty).StartsWith("Not scored", StringComparison.Ordinal))
+                    {
+                        notScored++;
+                    }
+                    else
+                    {
+                        scored++;
+                    }
+                }
+            }
+            if (scored == 0 && notScored == 0 && !off)
+            {
+                return null;
+            }
+            return new FitTally(scored, notScored, off);
+        }
+    }
+
     /// <summary>Why the acquisition stopped early, in a few words; null unless it was stopped.</summary>
     public string? StopReason
     {
@@ -439,10 +477,47 @@ public sealed class AcquisitionView
                 return new ActivityLine(2, order, e.At, "Circuit closed", "Read", null, "back to the normal pace");
             case JobDetailsJournalEntryKind.Started:
                 return new ActivityLine(2, order, e.At, "Step 2", "Pending", null, e.Message);
+            case JobDetailsJournalEntryKind.Assessed:
+                return FitLine(e, order);
+            case JobDetailsJournalEntryKind.AssessOff:
+                return new ActivityLine(2, order, e.At, "Fit off", "Blocked", null, e.Message);
             case JobDetailsJournalEntryKind.Stopped:
                 return new ActivityLine(2, order, e.At, "Stopped", "Blocked", null, e.Message);
             default:
                 return new ActivityLine(2, order, e.At, "Finished", "Read", null, e.Message);
         }
+    }
+
+    /// <summary>The fit line under a job read: its score coloured by decision, or why it was not scored.</summary>
+    private static ActivityLine FitLine(JobDetailsJournalEntry e, long order)
+    {
+        var text = e.Message ?? string.Empty;
+        var took = string.Empty;
+        if (e.WaitSeconds is { } seconds)
+        {
+            took = $" ({Duration(TimeSpan.FromSeconds(seconds))})";
+        }
+        if (text.StartsWith("Not scored", StringComparison.Ordinal))
+        {
+            return new ActivityLine(2, order, e.At, "Not scored", "Gone", e.JobId, text["Not scored: ".Length..] + took);
+        }
+
+        // "Fit 78 · Apply" (· hard skip): the tag carries the score, coloured like the decision.
+        var tagClass = "Gone";
+        if (text.Contains("· Apply", StringComparison.Ordinal))
+        {
+            tagClass = "Read";
+        }
+        else if (text.Contains("· Maybe", StringComparison.Ordinal))
+        {
+            tagClass = "Blocked";
+        }
+        var parts = text.Split(" · ", 2);
+        var rest = string.Empty;
+        if (parts.Length > 1)
+        {
+            rest = parts[1];
+        }
+        return new ActivityLine(2, order, e.At, parts[0], tagClass, e.JobId, rest + took);
     }
 }

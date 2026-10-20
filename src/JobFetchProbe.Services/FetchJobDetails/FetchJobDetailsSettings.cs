@@ -12,4 +12,13 @@ public sealed class FetchJobDetailsSettings
     public int DelaySeconds { get; set; } = 5;
 
     public CircuitBreakerSettings CircuitBreaker { get; set; } = new();
+
+    public const int MinFitFailuresBeforeOff = 1;
+    public const int MaxFitFailuresBeforeOff = 10;
+
+    /// <summary>Score each job's fit right after its page is read; the scoring time adds to the pause.</summary>
+    public bool AssessFit { get; set; } = true;
+
+    /// <summary>Failed scores in a row after which scoring is off for the rest of the run (Ollama is most likely down).</summary>
+    public int FitFailuresBeforeOff { get; set; } = 3;
 }

@@ -117,6 +117,18 @@ internal sealed class JobDetailsRunRecorder : IJobDetailsRunRecorder
                     core.Save(Entry(value, now, JobDetailsJournalEntryKind.CircuitClosed));
                     break;
 
+                case JobDetailsFetchEventKind.Assessed:
+                    core.Save(Entry(value, now, JobDetailsJournalEntryKind.Assessed) with
+                    {
+                        Message = FitLine(value),
+                        WaitSeconds = Seconds(value.Took),
+                    });
+                    break;
+
+                case JobDetailsFetchEventKind.AssessOff:
+                    core.Save(Entry(value, now, JobDetailsJournalEntryKind.AssessOff));
+                    break;
+
                 case JobDetailsFetchEventKind.Stopped:
                     Run = Run with { Message = $"Stopped: {value.Message}" };
                     core.Save(Entry(value, now, JobDetailsJournalEntryKind.Stopped));
@@ -131,6 +143,10 @@ internal sealed class JobDetailsRunRecorder : IJobDetailsRunRecorder
         {
             var summary = $"Read {result.Fetched}, failed {result.Failed}, not tried {result.Pending}; " +
                           $"{result.StillUnread} still without a description, {result.TotalRead} stored in total.";
+            if (result.Assessed + result.NotAssessed > 0)
+            {
+                summary += $" Fit scored for {result.Assessed} of {result.Assessed + result.NotAssessed} read.";
+            }
             if (result.StoppedReason is not null)
             {
                 summary = $"Stopped early ({result.StoppedReason.TrimEnd('.')}). {summary}";
@@ -199,7 +215,22 @@ internal sealed class JobDetailsRunRecorder : IJobDetailsRunRecorder
 
     private static JobDetailsJournalEntry Entry(JobDetailsFetchEvent value, DateTimeOffset now, JobDetailsJournalEntryKind kind)
     {
-        return new JobDetailsJournalEntry(0, now, kind, value.Index, value.Total, value.Job?.JobId, value.Title ?? value.Job?.Title, value.Status, value.Gone, value.Message, null);
+        return new JobDetailsJournalEntry(0, now, kind, value.Index, value.Total, value.Job?.SourceJobId, value.Title ?? value.Job?.Title, value.Status, value.Gone, value.Message, null);
+    }
+
+    /// <summary>"Fit 78 · Apply", "Fit 46 · Skip · hard skip", or "Not scored: why".</summary>
+    private static string FitLine(JobDetailsFetchEvent value)
+    {
+        if (value.Fit is not { } fit)
+        {
+            return "Not scored: " + (value.Message ?? "unknown reason");
+        }
+        var line = $"Fit {fit.Fit} · {fit.Decision}";
+        if (fit.HardSkip)
+        {
+            line += " · hard skip";
+        }
+        return line;
     }
 
     private static int? Seconds(TimeSpan? span)

@@ -13,11 +13,11 @@ public sealed class ApplicationTracker(IApplicationRepository applications, IJob
 
     public async Task<Application?> ApplyAsync(ApplyRequest request, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(request.JobId))
+        if (request.JobId <= 0)
         {
             throw new ApplicationRequestException("jobId", "Choose the job you applied to.");
         }
-        var jobId = request.JobId.Trim();
+        var jobId = request.JobId;
         EnsureDatabase();
 
         var outcome = await applications.AddAsync(jobId, time.GetLocalNow(), AppliedLine, ct);
@@ -36,10 +36,10 @@ public sealed class ApplicationTracker(IApplicationRepository applications, IJob
         return await GetAsync(jobId, ct);
     }
 
-    public async Task<bool> UndoAsync(string jobId, bool withNotes, CancellationToken ct = default)
+    public async Task<bool> UndoAsync(long jobId, bool withNotes, CancellationToken ct = default)
     {
         EnsureDatabase();
-        var record = await applications.GetAsync(jobId.Trim(), ct);
+        var record = await applications.GetAsync(jobId, ct);
         if (record is null)
         {
             return false;
@@ -106,10 +106,10 @@ public sealed class ApplicationTracker(IApplicationRepository applications, IJob
         return new ApplicationPage(items, page, pageSize, list.Count, open.Count, shut.Count, flaggedCount, stages);
     }
 
-    public async Task<Application?> GetAsync(string jobId, CancellationToken ct = default)
+    public async Task<Application?> GetAsync(long jobId, CancellationToken ct = default)
     {
         EnsureDatabase();
-        var record = await applications.GetAsync(jobId.Trim(), ct);
+        var record = await applications.GetAsync(jobId, ct);
         if (record is null)
         {
             return null;
@@ -118,14 +118,14 @@ public sealed class ApplicationTracker(IApplicationRepository applications, IJob
         return new Application(ToSummary(record, time.GetLocalNow()), notes);
     }
 
-    public async Task<Application?> SetStageAsync(string jobId, StageRequest request, CancellationToken ct = default)
+    public async Task<Application?> SetStageAsync(long jobId, StageRequest request, CancellationToken ct = default)
     {
         if (!Enum.IsDefined(request.Stage))
         {
             throw new ApplicationRequestException("stage", "Unknown stage.");
         }
         EnsureDatabase();
-        var record = await applications.GetAsync(jobId.Trim(), ct);
+        var record = await applications.GetAsync(jobId, ct);
         if (record is null)
         {
             return null;
@@ -138,7 +138,7 @@ public sealed class ApplicationTracker(IApplicationRepository applications, IJob
         return await GetAsync(record.JobId, ct);
     }
 
-    public async Task<Application?> AddNoteAsync(string jobId, NoteRequest request, CancellationToken ct = default)
+    public async Task<Application?> AddNoteAsync(long jobId, NoteRequest request, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(request.Text))
         {
@@ -150,7 +150,7 @@ public sealed class ApplicationTracker(IApplicationRepository applications, IJob
             throw new ApplicationRequestException("text", $"A note can have at most {MaxNoteLength} characters.");
         }
         EnsureDatabase();
-        if (!await applications.AddNoteAsync(jobId.Trim(), text, time.GetLocalNow(), ct))
+        if (!await applications.AddNoteAsync(jobId, text, time.GetLocalNow(), ct))
         {
             return null;
         }

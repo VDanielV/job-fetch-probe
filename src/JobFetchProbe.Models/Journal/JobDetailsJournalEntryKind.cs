@@ -23,4 +23,10 @@ public enum JobDetailsJournalEntryKind
 
     /// <summary>The run ended; the message holds the totals.</summary>
     Finished,
+
+    /// <summary>A job just read was scored (Message: "Fit 78 · Apply"), or could not be ("Not scored: …").</summary>
+    Assessed,
+
+    /// <summary>Scoring was switched off for the rest of the run after failing too many times in a row.</summary>
+    AssessOff,
 }

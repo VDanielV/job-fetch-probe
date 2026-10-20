@@ -74,20 +74,35 @@ public sealed class LoggingAcquisitionObserver(ILogger<LoggingAcquisitionObserve
             case JobDetailsFetchEventKind.Job:
                 if (e.Status == JobResultStatus.Read)
                 {
-                    logger.LogInformation("[{Index}/{Total}] ok {JobId} {Title} ({ToRead} to go)", e.Index, e.Total, e.Job?.JobId, e.Title ?? e.Job?.Title, e.ToRead);
+                    logger.LogInformation("[{Index}/{Total}] ok {JobId} {Title} ({ToRead} to go)", e.Index, e.Total, e.Job?.SourceJobId, e.Title ?? e.Job?.Title, e.ToRead);
                 }
                 else if (e.Status == JobResultStatus.Blocked)
                 {
-                    logger.LogWarning("[{Index}/{Total}] REFUSED {JobId} ({ToRead} to go)", e.Index, e.Total, e.Job?.JobId, e.ToRead);
+                    logger.LogWarning("[{Index}/{Total}] REFUSED {JobId} ({ToRead} to go)", e.Index, e.Total, e.Job?.SourceJobId, e.ToRead);
                 }
                 else if (e.Gone)
                 {
-                    logger.LogWarning("[{Index}/{Total}] gone {JobId}: the job page no longer exists", e.Index, e.Total, e.Job?.JobId);
+                    logger.LogWarning("[{Index}/{Total}] gone {JobId}: the job page no longer exists", e.Index, e.Total, e.Job?.SourceJobId);
                 }
                 else
                 {
-                    logger.LogWarning("[{Index}/{Total}] failed {JobId}: {Message}", e.Index, e.Total, e.Job?.JobId, e.Message);
+                    logger.LogWarning("[{Index}/{Total}] failed {JobId}: {Message}", e.Index, e.Total, e.Job?.SourceJobId, e.Message);
                 }
+                break;
+
+            case JobDetailsFetchEventKind.Assessed:
+                if (e.Fit is { } fit)
+                {
+                    logger.LogInformation("[{Index}/{Total}] fit {JobId}: {Fit} {Decision}{Hard} ({Seconds} s)", e.Index, e.Total, e.Job?.SourceJobId, fit.Fit, fit.Decision, fit.HardSkip ? " (hard skip)" : "", (int)(e.Took ?? TimeSpan.Zero).TotalSeconds);
+                }
+                else
+                {
+                    logger.LogWarning("[{Index}/{Total}] not scored {JobId}: {Message}", e.Index, e.Total, e.Job?.SourceJobId, e.Message);
+                }
+                break;
+
+            case JobDetailsFetchEventKind.AssessOff:
+                logger.LogWarning("Fit scoring OFF: {Message}", e.Message);
                 break;
 
             case JobDetailsFetchEventKind.CircuitOpened:

@@ -13,5 +13,5 @@ public interface IJobFitService
     Task<JobFitResult?> AssessAsync(JobFitRequest request, CancellationToken ct = default);
 
     /// <summary>Every stored score of the job, newest first; null when the id is not in the database.</summary>
-    Task<JobFitHistory?> GetHistoryAsync(string jobId, CancellationToken ct = default);
+    Task<JobFitHistory?> GetHistoryAsync(long jobId, CancellationToken ct = default);
 }

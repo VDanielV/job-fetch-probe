@@ -10,5 +10,5 @@ public interface IJobArchiveRepository
     /// an ID that is not in the database is skipped. The counts say which was which.
     /// </summary>
     /// <param name="jobIds">Distinct, trimmed job IDs.</param>
-    Task<ArchiveResult> ArchiveAsync(IReadOnlyList<string> jobIds, ArchiveReason reason, string? note, DateTimeOffset at, CancellationToken ct = default);
+    Task<ArchiveResult> ArchiveAsync(IReadOnlyList<long> jobIds, ArchiveReason reason, string? note, DateTimeOffset at, CancellationToken ct = default);
 }

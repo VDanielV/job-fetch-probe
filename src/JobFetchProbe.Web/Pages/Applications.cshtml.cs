@@ -39,7 +39,7 @@ public sealed class ApplicationsModel(IApplicationClient applications, IJobCatal
 
     public string? Unavailable { get; private set; }
 
-    public string? SelectedId { get; private set; }
+    public long? SelectedId { get; private set; }
 
     /// <summary>The application in the pane, with its timeline; null when none is selected or it is not an application.</summary>
     public Application? Selected { get; private set; }
@@ -80,27 +80,27 @@ public sealed class ApplicationsModel(IApplicationClient applications, IJobCatal
     public int UndoWarning { get; private set; }
 
     /// <summary>The undo of the last closing (the application and its previous stage), or null.</summary>
-    public (string JobId, ApplicationStage Previous)? UndoClose { get; private set; }
+    public (long JobId, ApplicationStage Previous)? UndoClose { get; private set; }
 
     public async Task OnGetAsync(
-        [FromQuery(Name = "p")] int page = 1, [FromQuery(Name = "job")] string? job = null, [FromQuery(Name = "closed")] int closed = 0,
+        [FromQuery(Name = "p")] int page = 1, [FromQuery(Name = "job")] long? job = null, [FromQuery(Name = "closed")] int closed = 0,
         [FromQuery(Name = "stage")] string? stage = null, [FromQuery(Name = "flagged")] int flagged = 0,
         [FromQuery(Name = "sort")] string? sort = null, CancellationToken ct = default)
     {
-        if (!string.IsNullOrWhiteSpace(job))
+        if (job is not null)
         {
-            SelectedId = job.Trim();
+            SelectedId = job;
         }
         SetState(closed, stage, flagged, sort);
         if (BannerKind is not null && BannerTitle is not null)
         {
             Banner = new PageBanner(BannerKind, BannerTitle, BannerText ?? string.Empty);
         }
-        if (ClosedJobId is not null && Enum.TryParse<ApplicationStage>(ClosedFrom, out var previous))
+        if (long.TryParse(ClosedJobId, out var closedId) && Enum.TryParse<ApplicationStage>(ClosedFrom, out var previous))
         {
-            UndoClose = (ClosedJobId, previous);
+            UndoClose = (closedId, previous);
         }
-        if (UndoWarningJobId is not null && UndoWarningJobId == SelectedId)
+        if (UndoWarningJobId is not null && UndoWarningJobId == SelectedId?.ToString())
         {
             UndoWarning = UndoWarningNotes;
         }
@@ -110,15 +110,15 @@ public sealed class ApplicationsModel(IApplicationClient applications, IJobCatal
             List = await applications.GetPageAsync(ShowClosed, Stage, OnlyFlagged, Math.Max(1, page), PageSize, Sort, ct);
             if (SelectedId is not null)
             {
-                Selected = await applications.GetAsync(SelectedId, ct);
+                Selected = await applications.GetAsync(SelectedId.Value, ct);
                 if (Selected is null)
                 {
                     Response.StatusCode = StatusCodes.Status404NotFound;
                 }
                 else
                 {
-                    Job = await catalog.GetJobAsync(SelectedId, ct);
-                    Fit = await StoredFitAsync(SelectedId, null, ct);
+                    Job = await catalog.GetJobAsync(SelectedId.Value, ct);
+                    Fit = await StoredFitAsync(SelectedId.Value, null, ct);
                 }
             }
         }
@@ -137,7 +137,7 @@ public sealed class ApplicationsModel(IApplicationClient applications, IJobCatal
     /// reopening it in the closed list), the next one opens and a green line offers Undo.
     /// </summary>
     public async Task<IActionResult> OnPostStageAsync(
-        string jobId, ApplicationStage stage, int index, int p = 1, int closed = 0, string? filter = null, int flagged = 0,
+        long jobId, ApplicationStage stage, int index, int p = 1, int closed = 0, string? filter = null, int flagged = 0,
         string? sort = null, CancellationToken ct = default)
     {
         SetState(closed, filter, flagged, sort);
@@ -151,7 +151,7 @@ public sealed class ApplicationsModel(IApplicationClient applications, IJobCatal
                 return Back(p, jobId);
             }
 
-            var title = after.Summary.Title ?? jobId;
+            var title = after.Summary.Title ?? jobId.ToString();
             if (ApplicationStageText.IsClosed(stage))
             {
                 SetBanner("ok", $"Closed as {ApplicationStageText.Label(stage)}: ", title + ".");
@@ -160,7 +160,7 @@ public sealed class ApplicationsModel(IApplicationClient applications, IJobCatal
             {
                 SetBanner("ok", $"Reopened as {ApplicationStageText.Label(stage)}: ", title + ".");
             }
-            ClosedJobId = jobId;
+            ClosedJobId = jobId.ToString();
             ClosedFrom = before.Summary.Stage.ToString();
             var (page, next) = await NextAsync(p, index, jobId, ct);
             return Back(page, next);
@@ -174,7 +174,7 @@ public sealed class ApplicationsModel(IApplicationClient applications, IJobCatal
 
     /// <summary>Undo of the last closing: puts the previous stage back and opens the application again.</summary>
     public async Task<IActionResult> OnPostRestoreAsync(
-        string jobId, ApplicationStage previous, int p = 1, int closed = 0, string? filter = null, int flagged = 0, string? sort = null, CancellationToken ct = default)
+        long jobId, ApplicationStage previous, int p = 1, int closed = 0, string? filter = null, int flagged = 0, string? sort = null, CancellationToken ct = default)
     {
         SetState(closed, filter, flagged, sort);
         try
@@ -191,7 +191,7 @@ public sealed class ApplicationsModel(IApplicationClient applications, IJobCatal
 
     /// <summary>Adds the note typed in the pane, dated now.</summary>
     public async Task<IActionResult> OnPostNoteAsync(
-        string jobId, string? text, int p = 1, int closed = 0, string? filter = null, int flagged = 0, string? sort = null, CancellationToken ct = default)
+        long jobId, string? text, int p = 1, int closed = 0, string? filter = null, int flagged = 0, string? sort = null, CancellationToken ct = default)
     {
         SetState(closed, filter, flagged, sort);
         try
@@ -211,17 +211,17 @@ public sealed class ApplicationsModel(IApplicationClient applications, IJobCatal
     /// (withNotes=1 confirms, and the notes are deleted with the application).
     /// </summary>
     public async Task<IActionResult> OnPostUndoAsync(
-        string jobId, int index, int withNotes = 0, int p = 1, int closed = 0, string? filter = null, int flagged = 0,
+        long jobId, int index, int withNotes = 0, int p = 1, int closed = 0, string? filter = null, int flagged = 0,
         string? sort = null, CancellationToken ct = default)
     {
         SetState(closed, filter, flagged, sort);
         try
         {
-            var title = (await applications.GetAsync(jobId, ct))?.Summary.Title ?? jobId;
+            var title = (await applications.GetAsync(jobId, ct))?.Summary.Title ?? jobId.ToString();
             var notes = await applications.UndoAsync(jobId, withNotes == 1, ct);
             if (notes > 0)
             {
-                UndoWarningJobId = jobId;
+                UndoWarningJobId = jobId.ToString();
                 UndoWarningNotes = notes;
                 return Back(p, jobId);
             }
@@ -241,7 +241,7 @@ public sealed class ApplicationsModel(IApplicationClient applications, IJobCatal
     /// (X-Requested-With: fetch); without it the page comes back and shows the stored score.
     /// </summary>
     public async Task<IActionResult> OnPostFitAsync(
-        string jobId, int p = 1, int closed = 0, string? filter = null, int flagged = 0, string? sort = null, CancellationToken ct = default)
+        long jobId, int p = 1, int closed = 0, string? filter = null, int flagged = 0, string? sort = null, CancellationToken ct = default)
     {
         SetState(closed, filter, flagged, sort);
         var clock = System.Diagnostics.Stopwatch.StartNew();
@@ -273,7 +273,7 @@ public sealed class ApplicationsModel(IApplicationClient applications, IJobCatal
     }
 
     /// <summary>The fit card: <paramref name="fresh"/> with the earlier stored scores, or the latest stored score, or null.</summary>
-    private async Task<FitView?> StoredFitAsync(string jobId, FitView? fresh, CancellationToken ct)
+    private async Task<FitView?> StoredFitAsync(long jobId, FitView? fresh, CancellationToken ct)
     {
         JobFitHistory? history = null;
         try
@@ -301,7 +301,7 @@ public sealed class ApplicationsModel(IApplicationClient applications, IJobCatal
     }
 
     /// <summary>The application now at the position the one that left had (the next one), else the previous one.</summary>
-    private async Task<(int Page, string? Next)> NextAsync(int p, int index, string goneId, CancellationToken ct)
+    private async Task<(int Page, long? Next)> NextAsync(int p, int index, long goneId, CancellationToken ct)
     {
         try
         {
@@ -345,7 +345,7 @@ public sealed class ApplicationsModel(IApplicationClient applications, IJobCatal
     }
 
     /// <summary>Where an application sits on this page (0-based), or -1.</summary>
-    public int PositionOf(string jobId)
+    public int PositionOf(long jobId)
     {
         if (List is null)
         {
@@ -368,7 +368,7 @@ public sealed class ApplicationsModel(IApplicationClient applications, IJobCatal
         {
             return null;
         }
-        var index = PositionOf(SelectedId);
+        var index = PositionOf(SelectedId.Value);
         if (index < 0)
         {
             return null;
@@ -401,14 +401,14 @@ public sealed class ApplicationsModel(IApplicationClient applications, IJobCatal
     /// The optional arguments change one setting; a chip (stage or flagged) replaces the other chip.
     /// </summary>
     public string Link(
-        int page, string? job, bool? closed = null, ApplicationStage? stage = null, bool? flagged = null, bool allChips = false,
+        int page, long? job, bool? closed = null, ApplicationStage? stage = null, bool? flagged = null, bool allChips = false,
         ApplicationSort? sort = null)
     {
         var showClosed = closed ?? ShowClosed;
         var query = new QueryBuilder { { "p", Math.Max(1, page).ToString() } };
         if (job is not null)
         {
-            query.Add("job", job);
+            query.Add("job", job.Value.ToString());
         }
         if (showClosed)
         {
@@ -467,7 +467,7 @@ public sealed class ApplicationsModel(IApplicationClient applications, IJobCatal
         BannerText = text;
     }
 
-    private RedirectResult Back(int page, string? job)
+    private RedirectResult Back(int page, long? job)
     {
         return Redirect(Link(page, job));
     }

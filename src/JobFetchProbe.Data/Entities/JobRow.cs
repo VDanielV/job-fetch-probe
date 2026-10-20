@@ -3,7 +3,14 @@ namespace JobFetchProbe.Data.Entities;
 /// <summary>One row per job, whichever listings or searches it appears in.</summary>
 public sealed class JobRow
 {
-    public string JobId { get; set; } = string.Empty;
+    /// <summary>The app's own ID, given by the database when the job is first stored.</summary>
+    public long Id { get; set; }
+
+    /// <summary>Where the job comes from, e.g. linkedin (<c>JobSources</c>). Unique together with <see cref="SourceJobId"/>.</summary>
+    public string Source { get; set; } = string.Empty;
+
+    /// <summary>The site's own ID, e.g. LinkedIn's 4476446382.</summary>
+    public string SourceJobId { get; set; } = string.Empty;
 
     /// <summary>The job's page: from the job page once read, else from the first card that listed it.</summary>
     public string Url { get; set; } = string.Empty;

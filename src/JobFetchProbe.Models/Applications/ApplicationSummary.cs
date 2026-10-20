@@ -10,7 +10,7 @@ namespace JobFetchProbe.Models.Applications;
 /// <param name="NoteCount">How many notes the owner wrote (the lines added by the app are not counted).</param>
 /// <param name="Fit">The latest fit assessment of the job; null when it was never assessed.</param>
 public sealed record ApplicationSummary(
-    string JobId,
+    long JobId,
     string? Title,
     string? Company,
     string? Location,

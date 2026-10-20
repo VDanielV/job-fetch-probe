@@ -20,10 +20,10 @@ public sealed class SqliteJobCatalog(IDbContextFactory<JobsDbContext> contexts, 
     {
         await using var db = await contexts.CreateDbContextAsync(ct);
         // Jobs applied to are on the Applications page, never in the Overview.
-        var query = db.Jobs.AsNoTracking().Where(j => !db.Applications.Any(a => a.JobId == j.JobId));
+        var query = db.Jobs.AsNoTracking().Where(j => !db.Applications.Any(a => a.JobId == j.Id));
         if (!includeArchived)
         {
-            query = query.Where(j => !db.ArchivedJobs.Any(a => a.JobId == j.JobId));
+            query = query.Where(j => !db.ArchivedJobs.Any(a => a.JobId == j.Id));
         }
 
         var total = await query.CountAsync(ct);
@@ -31,17 +31,16 @@ public sealed class SqliteJobCatalog(IDbContextFactory<JobsDbContext> contexts, 
         var pages = Math.Max(1, (total + pageSize - 1) / pageSize);
         page = Math.Clamp(page, 1, pages);
 
-        // LinkedIn job IDs grow over time, so the highest IDs are the newest postings. (SQLite cannot sort by the
+        // The app's IDs grow as jobs are found, so the highest IDs are the most recently found. (SQLite cannot sort by the
         // DateTimeOffset columns, and sorting by ID keeps paging in the database.)
         var rows = await query
-            .OrderByDescending(j => j.JobId.Length)
-            .ThenByDescending(j => j.JobId)
+            .OrderByDescending(j => j.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(j => new { j.JobId, j.Title, j.Company, j.Location, j.Posted, j.Status })
+            .Select(j => new { JobId = j.Id, j.Source, j.SourceJobId, j.Title, j.Company, j.Location, j.Posted, j.Status })
             .ToListAsync(ct);
 
-        var archived = new Dictionary<string, JobArchiveInfo>(StringComparer.Ordinal);
+        var archived = new Dictionary<long, JobArchiveInfo>();
         if (includeArchived && rows.Count > 0)
         {
             var ids = rows.Select(r => r.JobId).ToList();
@@ -53,7 +52,7 @@ public sealed class SqliteJobCatalog(IDbContextFactory<JobsDbContext> contexts, 
         }
 
         var jobs = rows
-            .Select(r => new JobSummary(r.JobId, r.Title, r.Company, r.Location, r.Posted, r.Status, archived.GetValueOrDefault(r.JobId)))
+            .Select(r => new JobSummary(r.JobId, r.Source, r.SourceJobId, r.Title, r.Company, r.Location, r.Posted, r.Status, archived.GetValueOrDefault(r.JobId)))
             .ToList();
         return new JobSummaryPage(jobs, page, pageSize, total, archivedCount);
     }
@@ -62,19 +61,18 @@ public sealed class SqliteJobCatalog(IDbContextFactory<JobsDbContext> contexts, 
     {
         await using var db = await contexts.CreateDbContextAsync(ct);
         // Jobs applied to are on the Applications page, never in the Overview.
-        var query = db.Jobs.AsNoTracking().Where(j => !db.Applications.Any(a => a.JobId == j.JobId));
+        var query = db.Jobs.AsNoTracking().Where(j => !db.Applications.Any(a => a.JobId == j.Id));
         if (!includeArchived)
         {
-            query = query.Where(j => !db.ArchivedJobs.Any(a => a.JobId == j.JobId));
+            query = query.Where(j => !db.ArchivedJobs.Any(a => a.JobId == j.Id));
         }
 
         var rows = await query
-            .OrderByDescending(j => j.JobId.Length)
-            .ThenByDescending(j => j.JobId)
-            .Select(j => new { j.JobId, j.Title, j.Company, j.Location, j.Posted, j.Status, j.Description })
+            .OrderByDescending(j => j.Id)
+            .Select(j => new { JobId = j.Id, j.Source, j.SourceJobId, j.Title, j.Company, j.Location, j.Posted, j.Status, j.Description })
             .ToListAsync(ct);
 
-        var archived = new Dictionary<string, JobArchiveInfo>(StringComparer.Ordinal);
+        var archived = new Dictionary<long, JobArchiveInfo>();
         if (includeArchived)
         {
             foreach (var row in await db.ArchivedJobs.AsNoTracking().ToListAsync(ct))
@@ -88,17 +86,17 @@ public sealed class SqliteJobCatalog(IDbContextFactory<JobsDbContext> contexts, 
         var jobs = rows
             .Select(r => new FilterCandidate(
                 new JobSummary(
-                    r.JobId, r.Title, r.Company, r.Location, r.Posted, r.Status, archived.GetValueOrDefault(r.JobId),
+                    r.JobId, r.Source, r.SourceJobId, r.Title, r.Company, r.Location, r.Posted, r.Status, archived.GetValueOrDefault(r.JobId),
                     Fit: fits.GetValueOrDefault(r.JobId)),
                 r.Description))
             .ToList();
         return new FilterCandidates(jobs, archivedCount);
     }
 
-    public async Task<StoredJob?> GetAsync(string jobId, CancellationToken ct = default)
+    public async Task<StoredJob?> GetAsync(long jobId, CancellationToken ct = default)
     {
         await using var db = await contexts.CreateDbContextAsync(ct);
-        var row = await db.Jobs.AsNoTracking().Include(j => j.Details).SingleOrDefaultAsync(j => j.JobId == jobId, ct);
+        var row = await db.Jobs.AsNoTracking().Include(j => j.Details).SingleOrDefaultAsync(j => j.Id == jobId, ct);
         if (row is null)
         {
             return null;
@@ -107,7 +105,9 @@ public sealed class SqliteJobCatalog(IDbContextFactory<JobsDbContext> contexts, 
 
         return new StoredJob
         {
-            JobId = row.JobId,
+            JobId = row.Id,
+            Source = row.Source,
+            SourceJobId = row.SourceJobId,
             Url = new Uri(row.Url),
             Title = row.Title,
             Company = row.Company,

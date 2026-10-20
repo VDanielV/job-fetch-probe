@@ -105,7 +105,7 @@
                             var link = Model.Link(list.Page, a.JobId);
                             var rowClass = string.Join(" ", new[] { a.JobId == Model.SelectedId ? "selected" : null, "flag-" + a.Flag, ApplicationStageText.IsClosed(a.Stage) ? "closed" : null }.Where(c => c is not null));
                             <tr data-href="@link" class="@rowClass">
-                                <td class="title"><a href="@link">@(a.Title ?? a.JobId)</a></td>
+                                <td class="title"><a href="@link">@(a.Title ?? "#" + a.JobId)</a></td>
                                 <td class="col-fit"><partial name="_FitCell" model="a.Fit" /></td>
                                 <td>@a.Company</td>
                                 <td class="muted col-location">@a.Location</td>
@@ -206,7 +206,10 @@
         <aside class="detail" aria-label="Application" data-next="@Model.Neighbour(1)" data-previous="@Model.Neighbour(-1)">
             <div class="detail-top">
                 <a class="close" href="@Model.Link(list.Page, null)" aria-label="Close the details" title="Close">✕</a>
-                <span>#<span class="detail-id">@Model.SelectedId</span></span>
+                <span>#<span class="detail-id">@Model.SelectedId</span>@if (Model.Job is { } src)
+                    {
+                        <span class="source-id"> · @JobSourceText.Of(src.Source, src.SourceJobId)</span>
+                    }</span>
                 @if (Model.Selected is { } sel)
                 {
                     <span class="stage @sel.Summary.Stage">@ApplicationStageText.Label(sel.Summary.Stage)</span>
@@ -221,7 +224,7 @@
             {
                 var a = app.Summary;
                 var index = Model.PositionOf(a.JobId);
-                <h2>@(a.Title ?? a.JobId)</h2>
+                <h2>@(a.Title ?? "#" + a.JobId)</h2>
                 <p class="where">@string.Join(" · ", new[] { a.Company, a.Location }.Where(s => !string.IsNullOrWhiteSpace(s))) · applied @ApplicationStageText.Day(a.AppliedAt) (@ApplicationStageText.Age(a.DaysSinceApplied)@(a.DaysSinceApplied > 1 ? " ago" : ""))</p>
                 @if (Model.Job is { } job)
                 {

@@ -25,7 +25,7 @@ internal static class JobRowMapping
         row.LastAttemptAt = job.RetrievedAt;
 
         row.Details.Clear();
-        row.Details.AddRange(job.Details.Select((d, i) => new JobDetailRow { JobId = row.JobId, Position = i, Label = d.Label, Value = d.Value }));
+        row.Details.AddRange(job.Details.Select((d, i) => new JobDetailRow { JobId = row.Id, Position = i, Label = d.Label, Value = d.Value }));
     }
 
     /// <summary>Fills a job not read yet from a search card. A job already read keeps its page data.</summary>
@@ -41,10 +41,11 @@ internal static class JobRowMapping
         row.Location = card.Location ?? row.Location;
     }
 
-    /// <summary>The job as step 2 needs it: its ID, its page, and what its card showed.</summary>
+    /// <summary>The job as step 2 needs it: its site and the site's ID, its page, and what its card showed.</summary>
     public static JobListing ToCard(this JobRow row) => new()
     {
-        JobId = row.JobId,
+        Source = row.Source,
+        SourceJobId = row.SourceJobId,
         Url = new Uri(row.Url),
         Title = row.Title,
         Company = row.Company,
@@ -53,23 +54,45 @@ internal static class JobRowMapping
 
     /// <summary>
     /// Makes sure every card's job has a row (new rows start as Pending) and fills unread ones from the card.
-    /// Returns the rows by JobId, tracked by <paramref name="db"/>.
+    /// Returns the rows by <see cref="KeyOf(JobListing)"/>, tracked by <paramref name="db"/>; new rows get their Id when
+    /// the context is saved.
     /// </summary>
     public static async Task<Dictionary<string, JobRow>> UpsertCardsAsync(
         this JobsDbContext db, IReadOnlyList<JobListing> cards, DateTimeOffset now, CancellationToken ct)
     {
-        var ids = cards.Select(c => c.JobId).Distinct(StringComparer.Ordinal).ToList();
-        var rows = await db.Jobs.Where(j => ids.Contains(j.JobId)).ToDictionaryAsync(j => j.JobId, StringComparer.Ordinal, ct);
+        var rows = new Dictionary<string, JobRow>(StringComparer.Ordinal);
+        foreach (var group in cards.GroupBy(c => c.Source, StringComparer.Ordinal))
+        {
+            var source = group.Key;
+            var ids = group.Select(c => c.SourceJobId).Distinct(StringComparer.Ordinal).ToList();
+            var known = await db.Jobs.Where(j => j.Source == source && ids.Contains(j.SourceJobId)).ToListAsync(ct);
+            foreach (var row in known)
+            {
+                rows[KeyOf(row.Source, row.SourceJobId)] = row;
+            }
+        }
         foreach (var card in cards)
         {
-            if (!rows.TryGetValue(card.JobId, out var row))
+            var key = KeyOf(card);
+            if (!rows.TryGetValue(key, out var row))
             {
-                row = new JobRow { JobId = card.JobId, FirstSeenAt = now, Status = JobStatus.Pending };
-                rows[card.JobId] = row;
+                row = new JobRow { Source = card.Source, SourceJobId = card.SourceJobId, FirstSeenAt = now, Status = JobStatus.Pending };
+                rows[key] = row;
                 db.Jobs.Add(row);
             }
             row.ApplyListing(card);
         }
         return rows;
+    }
+
+    /// <summary>A dictionary key for a site's job: source and site ID.</summary>
+    public static string KeyOf(JobListing card)
+    {
+        return KeyOf(card.Source, card.SourceJobId);
+    }
+
+    public static string KeyOf(string source, string sourceJobId)
+    {
+        return source + "\n" + sourceJobId;
     }
 }

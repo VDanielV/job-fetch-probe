@@ -13,7 +13,7 @@ namespace JobFetchProbe.Web.Pages;
 /// <param name="CurrentProfile">The version of the Fit files now, to mark older scores; null when unknown.</param>
 /// <param name="ArchiveHint">The page has the archive box, whose note the card fills in.</param>
 public sealed record FitView(
-    string JobId,
+    long JobId,
     JobFitResult? Result,
     string? Error,
     int Seconds,
@@ -24,7 +24,7 @@ public sealed record FitView(
     bool ArchiveHint = true)
 {
     /// <summary>The latest stored score, with the others as earlier ones; null when the job was never scored.</summary>
-    public static FitView? FromHistory(string jobId, JobFitHistory history)
+    public static FitView? FromHistory(long jobId, JobFitHistory history)
     {
         if (history.Assessments.Count == 0)
         {

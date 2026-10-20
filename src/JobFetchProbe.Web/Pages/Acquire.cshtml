@@ -11,7 +11,7 @@
 @section Head {
     @if (Model.Refresh)
     {
-        <meta http-equiv="refresh" content="@AcquireModel.RefreshSeconds">
+        <meta http-equiv="refresh" content="@($"{AcquireModel.RefreshSeconds};url={Model.RefreshUrl}")">
     }
 }
 
@@ -87,7 +87,7 @@
                         <span>@v.When(v.Details?.FinishedAt ?? v.Listing.FinishedAt ?? v.Listing.LastSeenAt)</span>
                         @if (!Model.ShowProgress)
                         {
-                            <span> · @Short(v.Details?.Message ?? v.Listing.Message) · <a class="link" asp-page="/Index">see the jobs</a></span>
+                            <span> · @Short(v.Details?.Message ?? v.Listing.Message) · <a class="link" asp-page="/Acquire" asp-route-since="@Model.LastRunSince" asp-route-tab="@AcquireModel.TabSummary">see the summary</a> · <a class="link" asp-page="/Index">see the jobs</a></span>
                         }
                     }
                 </p>

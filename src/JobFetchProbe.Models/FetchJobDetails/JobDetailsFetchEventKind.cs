@@ -22,4 +22,10 @@ public enum JobDetailsFetchEventKind
 
     /// <summary>The run stopped before the end of the list.</summary>
     Stopped,
+
+    /// <summary>A job just read was scored (Fit), or could not be (Message says why).</summary>
+    Assessed,
+
+    /// <summary>Scoring failed too many times in a row and is off for the rest of the run.</summary>
+    AssessOff,
 }
