@@ -22,11 +22,13 @@ public interface IApplicationTracker
 
     /// <summary>
     /// One page of the open applications, or the closed ones; optionally only one stage, or only the flagged ones; in the
-    /// usual order, or the best latest fit first (never assessed last).
+    /// usual order, or the best latest fit first (never assessed last). With a search (<paramref name="query"/>, words of the
+    /// company or the title): the matching applications, open and closed, whatever the other filters say; open ones
+    /// first in the usual order, then closed ones, most recently closed first.
     /// </summary>
     Task<ApplicationPage> GetPageAsync(
         bool closed, ApplicationStage? stage, bool flagged, int page, int pageSize, ApplicationSort sort = ApplicationSort.FollowUp,
-        CancellationToken ct = default);
+        string? query = null, CancellationToken ct = default);
 
     Task<Application?> GetAsync(long jobId, CancellationToken ct = default);
 

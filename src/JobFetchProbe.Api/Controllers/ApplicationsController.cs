@@ -15,6 +15,9 @@ public sealed class ApplicationsController(IApplicationTracker applications) : C
 {
     public const int MaxPageSize = 100;
 
+    /// <summary>The longest search text (q) accepted.</summary>
+    public const int MaxSearchLength = 200;
+
     /// <summary>"I applied": the job leaves the Overview and starts at stage Applied.</summary>
     /// <remarks>POST api/Applications { "jobId": 57 }</remarks>
     /// <response code="201">The new application with its first timeline line.</response>
@@ -78,11 +81,12 @@ public sealed class ApplicationsController(IApplicationTracker applications) : C
 
     /// <summary>
     /// One page of the open applications (or closed=true), optionally one stage or only the flagged ones; sort=Fit lists
-    /// the best latest fit first.
+    /// the best latest fit first. With q (words of the company or the title): the matching applications, open and closed;
+    /// closed, stage and flagged are then ignored.
     /// </summary>
-    /// <remarks>GET api/Applications?closed=false&amp;stage=Interview&amp;flagged=false&amp;sort=FollowUp&amp;page=1&amp;pageSize=25</remarks>
+    /// <remarks>GET api/Applications?closed=false&amp;stage=Interview&amp;flagged=false&amp;sort=FollowUp&amp;page=1&amp;pageSize=25&amp;q=flywire</remarks>
     /// <response code="200">The page, with the counts for the chips.</response>
-    /// <response code="400">A page below 1, or a page size outside 1–100.</response>
+    /// <response code="400">A page below 1, a page size outside 1–100, or a search over 200 characters.</response>
     [HttpGet]
     [ProducesResponseType<ApplicationPage>(StatusCodes.Status200OK)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
@@ -90,8 +94,12 @@ public sealed class ApplicationsController(IApplicationTracker applications) : C
     public async Task<ActionResult<ApplicationPage>> List(
         [FromQuery] bool closed = false, [FromQuery] ApplicationStage? stage = null, [FromQuery] bool flagged = false,
         [FromQuery] int page = 1, [FromQuery] int pageSize = 25, [FromQuery] ApplicationSort sort = ApplicationSort.FollowUp,
-        CancellationToken ct = default)
+        [FromQuery] string? q = null, CancellationToken ct = default)
     {
+        if (q is { Length: > MaxSearchLength })
+        {
+            ModelState.AddModelError(nameof(q), $"The search can have at most {MaxSearchLength} characters.");
+        }
         if (page < 1)
         {
             ModelState.AddModelError(nameof(page), "The page must be 1 or more.");
@@ -104,7 +112,7 @@ public sealed class ApplicationsController(IApplicationTracker applications) : C
         {
             return ValidationProblem(ModelState);
         }
-        return await applications.GetPageAsync(closed, stage, flagged, page, pageSize, sort, ct);
+        return await applications.GetPageAsync(closed, stage, flagged, page, pageSize, sort, q, ct);
     }
 
     /// <summary>The numbers for the menu: open applications, and how many are flagged.</summary>

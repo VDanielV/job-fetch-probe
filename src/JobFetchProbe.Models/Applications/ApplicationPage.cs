@@ -9,6 +9,8 @@ namespace JobFetchProbe.Models.Applications;
 /// <param name="Closed">All closed applications.</param>
 /// <param name="Flagged">Open applications with a follow-up flag.</param>
 /// <param name="Stages">The count for every stage.</param>
+/// <param name="Query">The search text (company or title), as given; null without a search.</param>
+/// <param name="Terms">With a search: the words and phrases looked for, to highlight them. Null without one.</param>
 public sealed record ApplicationPage(
     IReadOnlyList<ApplicationSummary> Applications,
     int Page,
@@ -17,7 +19,9 @@ public sealed record ApplicationPage(
     int Open,
     int Closed,
     int Flagged,
-    IReadOnlyList<ApplicationStageCount> Stages)
+    IReadOnlyList<ApplicationStageCount> Stages,
+    string? Query = null,
+    IReadOnlyList<string>? Terms = null)
 {
     public int TotalPages
     {

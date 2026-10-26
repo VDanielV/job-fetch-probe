@@ -20,7 +20,7 @@ public interface IApplicationClient
     /// <summary>GET api/Applications: one page of the open (or closed) applications.</summary>
     Task<ApplicationPage> GetPageAsync(
         bool closed, ApplicationStage? stage, bool flagged, int page, int pageSize, ApplicationSort sort = ApplicationSort.FollowUp,
-        CancellationToken ct = default);
+        string? query = null, CancellationToken ct = default);
 
     /// <summary>GET api/Applications/{jobId}, or null when the job is not in the applications.</summary>
     Task<Application?> GetAsync(long jobId, CancellationToken ct = default);

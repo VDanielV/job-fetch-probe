@@ -1,5 +1,5 @@
 @model JobFetchProbe.Web.Pages.ApplicationsModel
-@* The list settings, carried by the Applications forms so the page comes back the same: page, closed, chip, order. *@
+@* The list settings, carried by the Applications forms so the page comes back the same: page, closed, chip, order, search. *@
 <input type="hidden" name="p" value="@(Model.List?.Page ?? 1)" />
 <input type="hidden" name="closed" value="@(Model.ShowClosed ? 1 : 0)" />
 @if (Model.Stage is { } stage)
@@ -13,4 +13,8 @@
 @if (Model.Sort == JobFetchProbe.Models.Applications.ApplicationSort.Fit)
 {
     <input type="hidden" name="sort" value="fit" />
+}
+@if (Model.Search is { } search)
+{
+    <input type="hidden" name="q" value="@search" />
 }

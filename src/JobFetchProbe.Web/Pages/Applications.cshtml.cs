@@ -11,7 +11,7 @@ namespace JobFetchProbe.Web.Pages;
 /// <summary>
 /// Applications: the jobs the owner applied to, flagged ones first, 25 per page (?p=2), with the selected one in the pane
 /// (?job=…). Closed ones are listed with ?closed=1; chips narrow to one stage (?stage=Interview) or the flagged ones
-/// (?flagged=1); ?sort=fit lists the best fit first. From the pane: change the stage, add a note, check the fit again, or
+/// (?flagged=1); ?sort=fit lists the best fit first; ?q= searches company and title in open and closed applications. From the pane: change the stage, add a note, check the fit again, or
 /// undo "I applied". Everything goes through
 /// GET/PUT/POST/DELETE api/Applications; the job's description comes from GET api/JobCatalog/{jobId}.
 /// </summary>
@@ -30,6 +30,18 @@ public sealed class ApplicationsModel(IApplicationClient applications, IJobCatal
 
     /// <summary>The fit of the application in the pane: its latest stored score and the earlier ones; null when never scored.</summary>
     public FitView? Fit { get; private set; }
+
+    /// <summary>The search text (?q=, words of the company or the title), trimmed; null without a search.</summary>
+    public string? Search { get; private set; }
+
+    /// <summary>A search is on: the list shows matches, open and closed, and ignores Show closed and the chips.</summary>
+    public bool Searching
+    {
+        get
+        {
+            return Search is not null;
+        }
+    }
 
     /// <summary>Only the flagged applications (?flagged=1).</summary>
     public bool OnlyFlagged { get; private set; }
@@ -85,13 +97,13 @@ public sealed class ApplicationsModel(IApplicationClient applications, IJobCatal
     public async Task OnGetAsync(
         [FromQuery(Name = "p")] int page = 1, [FromQuery(Name = "job")] long? job = null, [FromQuery(Name = "closed")] int closed = 0,
         [FromQuery(Name = "stage")] string? stage = null, [FromQuery(Name = "flagged")] int flagged = 0,
-        [FromQuery(Name = "sort")] string? sort = null, CancellationToken ct = default)
+        [FromQuery(Name = "sort")] string? sort = null, [FromQuery(Name = "q")] string? q = null, CancellationToken ct = default)
     {
         if (job is not null)
         {
             SelectedId = job;
         }
-        SetState(closed, stage, flagged, sort);
+        SetState(closed, stage, flagged, sort, q);
         if (BannerKind is not null && BannerTitle is not null)
         {
             Banner = new PageBanner(BannerKind, BannerTitle, BannerText ?? string.Empty);
@@ -107,7 +119,11 @@ public sealed class ApplicationsModel(IApplicationClient applications, IJobCatal
 
         try
         {
-            List = await applications.GetPageAsync(ShowClosed, Stage, OnlyFlagged, Math.Max(1, page), PageSize, Sort, ct);
+            List = await applications.GetPageAsync(ShowClosed, Stage, OnlyFlagged, Math.Max(1, page), PageSize, Sort, Search, ct);
+            if (Searching && SelectedId is null && List.Total == 1 && List.Applications.Count == 1)
+            {
+                SelectedId = List.Applications[0].JobId; // a search with one match opens it
+            }
             if (SelectedId is not null)
             {
                 Selected = await applications.GetAsync(SelectedId.Value, ct);
@@ -138,30 +154,34 @@ public sealed class ApplicationsModel(IApplicationClient applications, IJobCatal
     /// </summary>
     public async Task<IActionResult> OnPostStageAsync(
         long jobId, ApplicationStage stage, int index, int p = 1, int closed = 0, string? filter = null, int flagged = 0,
-        string? sort = null, CancellationToken ct = default)
+        string? sort = null, string? q = null, CancellationToken ct = default)
     {
-        SetState(closed, filter, flagged, sort);
+        SetState(closed, filter, flagged, sort, q);
         try
         {
             var before = await applications.GetAsync(jobId, ct);
             var after = await applications.SetStageAsync(jobId, stage, ct);
+            if (before is null || before.Summary.Stage == stage)
+            {
+                return Back(p, jobId);
+            }
+            var movedOut = ApplicationStageText.IsClosed(before.Summary.Stage) != ApplicationStageText.IsClosed(after.Summary.Stage);
             var left = ApplicationStageText.IsClosed(after.Summary.Stage) != ShowClosed;
-            if (before is null || before.Summary.Stage == stage || !left)
+            if (Searching)
+            {
+                // A search lists open and closed ones: the application stays in the list and the pane, with Undo.
+                if (movedOut)
+                {
+                    SetClosedBanner(after.Summary.Title ?? jobId.ToString(), stage, before.Summary.Stage, jobId);
+                }
+                return Back(p, jobId);
+            }
+            if (!left)
             {
                 return Back(p, jobId);
             }
 
-            var title = after.Summary.Title ?? jobId.ToString();
-            if (ApplicationStageText.IsClosed(stage))
-            {
-                SetBanner("ok", $"Closed as {ApplicationStageText.Label(stage)}: ", title + ".");
-            }
-            else
-            {
-                SetBanner("ok", $"Reopened as {ApplicationStageText.Label(stage)}: ", title + ".");
-            }
-            ClosedJobId = jobId.ToString();
-            ClosedFrom = before.Summary.Stage.ToString();
+            SetClosedBanner(after.Summary.Title ?? jobId.ToString(), stage, before.Summary.Stage, jobId);
             var (page, next) = await NextAsync(p, index, jobId, ct);
             return Back(page, next);
         }
@@ -172,11 +192,26 @@ public sealed class ApplicationsModel(IApplicationClient applications, IJobCatal
         }
     }
 
+    /// <summary>The green line after closing or reopening an application, with Undo back to <paramref name="previous"/>.</summary>
+    private void SetClosedBanner(string title, ApplicationStage stage, ApplicationStage previous, long jobId)
+    {
+        if (ApplicationStageText.IsClosed(stage))
+        {
+            SetBanner("ok", $"Closed as {ApplicationStageText.Label(stage)}: ", title + ".");
+        }
+        else
+        {
+            SetBanner("ok", $"Reopened as {ApplicationStageText.Label(stage)}: ", title + ".");
+        }
+        ClosedJobId = jobId.ToString();
+        ClosedFrom = previous.ToString();
+    }
+
     /// <summary>Undo of the last closing: puts the previous stage back and opens the application again.</summary>
     public async Task<IActionResult> OnPostRestoreAsync(
-        long jobId, ApplicationStage previous, int p = 1, int closed = 0, string? filter = null, int flagged = 0, string? sort = null, CancellationToken ct = default)
+        long jobId, ApplicationStage previous, int p = 1, int closed = 0, string? filter = null, int flagged = 0, string? sort = null, string? q = null, CancellationToken ct = default)
     {
-        SetState(closed, filter, flagged, sort);
+        SetState(closed, filter, flagged, sort, q);
         try
         {
             await applications.SetStageAsync(jobId, previous, ct);
@@ -191,9 +226,9 @@ public sealed class ApplicationsModel(IApplicationClient applications, IJobCatal
 
     /// <summary>Adds the note typed in the pane, dated now.</summary>
     public async Task<IActionResult> OnPostNoteAsync(
-        long jobId, string? text, int p = 1, int closed = 0, string? filter = null, int flagged = 0, string? sort = null, CancellationToken ct = default)
+        long jobId, string? text, int p = 1, int closed = 0, string? filter = null, int flagged = 0, string? sort = null, string? q = null, CancellationToken ct = default)
     {
-        SetState(closed, filter, flagged, sort);
+        SetState(closed, filter, flagged, sort, q);
         try
         {
             await applications.AddNoteAsync(jobId, text ?? string.Empty, ct);
@@ -212,9 +247,9 @@ public sealed class ApplicationsModel(IApplicationClient applications, IJobCatal
     /// </summary>
     public async Task<IActionResult> OnPostUndoAsync(
         long jobId, int index, int withNotes = 0, int p = 1, int closed = 0, string? filter = null, int flagged = 0,
-        string? sort = null, CancellationToken ct = default)
+        string? sort = null, string? q = null, CancellationToken ct = default)
     {
-        SetState(closed, filter, flagged, sort);
+        SetState(closed, filter, flagged, sort, q);
         try
         {
             var title = (await applications.GetAsync(jobId, ct))?.Summary.Title ?? jobId.ToString();
@@ -241,9 +276,9 @@ public sealed class ApplicationsModel(IApplicationClient applications, IJobCatal
     /// (X-Requested-With: fetch); without it the page comes back and shows the stored score.
     /// </summary>
     public async Task<IActionResult> OnPostFitAsync(
-        long jobId, int p = 1, int closed = 0, string? filter = null, int flagged = 0, string? sort = null, CancellationToken ct = default)
+        long jobId, int p = 1, int closed = 0, string? filter = null, int flagged = 0, string? sort = null, string? q = null, CancellationToken ct = default)
     {
-        SetState(closed, filter, flagged, sort);
+        SetState(closed, filter, flagged, sort, q);
         var clock = System.Diagnostics.Stopwatch.StartNew();
         FitView view;
         try
@@ -305,7 +340,7 @@ public sealed class ApplicationsModel(IApplicationClient applications, IJobCatal
     {
         try
         {
-            var refreshed = await applications.GetPageAsync(ShowClosed, Stage, OnlyFlagged, Math.Max(1, p), PageSize, Sort, ct);
+            var refreshed = await applications.GetPageAsync(ShowClosed, Stage, OnlyFlagged, Math.Max(1, p), PageSize, Sort, Search, ct);
             var items = refreshed.Applications.Where(a => a.JobId != goneId).ToList();
             if (items.Count == 0)
             {
@@ -402,7 +437,7 @@ public sealed class ApplicationsModel(IApplicationClient applications, IJobCatal
     /// </summary>
     public string Link(
         int page, long? job, bool? closed = null, ApplicationStage? stage = null, bool? flagged = null, bool allChips = false,
-        ApplicationSort? sort = null)
+        ApplicationSort? sort = null, bool clearSearch = false)
     {
         var showClosed = closed ?? ShowClosed;
         var query = new QueryBuilder { { "p", Math.Max(1, page).ToString() } };
@@ -443,11 +478,19 @@ public sealed class ApplicationsModel(IApplicationClient applications, IJobCatal
         {
             query.Add("sort", "fit");
         }
+        if (Search is not null && !clearSearch)
+        {
+            query.Add("q", Search);
+        }
         return Url.Page("/Applications") + query.ToQueryString();
     }
 
-    private void SetState(int closed, string? stage, int flagged, string? sort)
+    private void SetState(int closed, string? stage, int flagged, string? sort, string? q)
     {
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            Search = q.Trim();
+        }
         if (string.Equals(sort, "fit", StringComparison.OrdinalIgnoreCase))
         {
             Sort = ApplicationSort.Fit;

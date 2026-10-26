@@ -31,7 +31,7 @@
         </h1>
         <p>The jobs you applied to. Follow up after a week; close them when they are over, and they leave this list.</p>
     </div>
-    @if (list is not null)
+    @if (list is not null && !Model.Searching)
     {
         <a class="show-archived" href="@Model.Link(1, null, closed: !Model.ShowClosed)"
            role="checkbox" aria-checked="@(Model.ShowClosed ? "true" : "false")">
@@ -69,13 +69,39 @@
 
 <div class="workspace @(hasPane ? "has-pane" : null)">
     <section class="list">
+        <div class="filter-bar app-search-bar">
+            <form method="get" action="/applications" class="filter-search" role="search" data-app-search>
+                @if (Model.Sort == ApplicationSort.Fit)
+                {
+                    <input type="hidden" name="sort" value="fit" />
+                }
+                <span class="filter-icon" aria-hidden="true">⌕</span>
+                <label class="visually-hidden" for="app-q">Search company or title</label>
+                <input id="app-q" name="q" value="@Model.Search" maxlength="200" placeholder="Search company or title   ( / )" autocomplete="off" data-app-q />
+                @if (Model.Searching)
+                {
+                    <a class="filter-clear" href="@Model.Link(1, null, clearSearch: true)" title="Clear the search" aria-label="Clear the search" data-app-clear>✕</a>
+                }
+            </form>
+            @if (Model.Searching)
+            {
+                <span class="filter-result">
+                    @(list.Total == 1 ? "1 application matches" : $"{list.Total} applications match") “@Model.Search”, open and closed ·
+                    <a class="link" href="@Model.Link(1, null, clearSearch: true)">Clear</a>
+                </span>
+            }
+        </div>
         <div class="chip-row app-chips">
             <div class="filter-scope sort-switch" role="group" aria-label="Order">
                 <span class="sort-label">Sort</span>
                 <a class="@(Model.Sort == ApplicationSort.FollowUp ? "on" : null)" href="@Model.Link(1, Model.SelectedId, sort: ApplicationSort.FollowUp)">Follow-up first</a>
                 <a class="@(Model.Sort == ApplicationSort.Fit ? "on" : null)" href="@Model.Link(1, Model.SelectedId, sort: ApplicationSort.Fit)">Best fit</a>
             </div>
-            @if (Model.ShowClosed)
+            @if (Model.Searching)
+            {
+                <span class="muted search-note">While searching, every stage is listed: open ones first, then closed ones.</span>
+            }
+            else if (Model.ShowClosed)
             {
                 <a class="fchip @(Model.Stage is null ? "on" : null)" href="@Model.Link(1, Model.SelectedId, allChips: true)">All closed <i>@list.Closed</i></a>
                 @foreach (var stage in ApplicationStageText.Closed)
@@ -105,9 +131,9 @@
                             var link = Model.Link(list.Page, a.JobId);
                             var rowClass = string.Join(" ", new[] { a.JobId == Model.SelectedId ? "selected" : null, "flag-" + a.Flag, ApplicationStageText.IsClosed(a.Stage) ? "closed" : null }.Where(c => c is not null));
                             <tr data-href="@link" class="@rowClass">
-                                <td class="title"><a href="@link">@(a.Title ?? "#" + a.JobId)</a></td>
+                                <td class="title"><a href="@link">@Highlight.Html(a.Title ?? "#" + a.JobId, list.Terms)</a></td>
                                 <td class="col-fit"><partial name="_FitCell" model="a.Fit" /></td>
-                                <td>@a.Company</td>
+                                <td>@Highlight.Html(a.Company, list.Terms)</td>
                                 <td class="muted col-location">@a.Location</td>
                                 <td><span class="stage @a.Stage">@ApplicationStageText.Label(a.Stage)</span></td>
                                 <td class="muted nowrap" title="@ApplicationsModel.When(a.AppliedAt)">@ApplicationStageText.Day(a.AppliedAt)<span class="age">@ApplicationStageText.Age(a.DaysSinceApplied)</span></td>
@@ -140,7 +166,11 @@
                         @if (list.Applications.Count == 0)
                         {
                             <tr class="empty"><td colspan="8">
-                                @if (Model.ShowClosed)
+                                @if (Model.Searching)
+                                {
+                                    <span>No application matches “@Model.Search”. The job may not be marked as applied: search for it in the <a href="/?q=@Uri.EscapeDataString(Model.Search!)">Overview</a>. <a href="@Model.Link(1, null, clearSearch: true)">Clear the search</a></span>
+                                }
+                                else if (Model.ShowClosed)
                                 {
                                     <span>No closed application@(Model.Stage is { } s ? " with the stage " + ApplicationStageText.Label(s) : "").</span>
                                 }
@@ -162,7 +192,14 @@
                     var first = list.Total == 0 ? 0 : (list.Page - 1) * list.PageSize + 1;
                     var lastShown = Math.Min(list.Page * list.PageSize, list.Total);
                 }
-                <span>Showing @first–@lastShown of @list.Total @(Model.ShowClosed ? "closed" : "open") applications</span>
+                @if (Model.Searching)
+                {
+                    <span>Showing @first–@lastShown of @list.Total matching applications</span>
+                }
+                else
+                {
+                    <span>Showing @first–@lastShown of @list.Total @(Model.ShowClosed ? "closed" : "open") applications</span>
+                }
                 <nav aria-label="Pages">
                     @if (list.Page > 1)
                     {

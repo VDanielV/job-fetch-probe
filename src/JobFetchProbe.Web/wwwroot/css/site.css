@@ -630,3 +630,10 @@ tr.empty-run td { color: var(--muted); }
 .seen.new { background: var(--accent-soft); color: var(--accent-strong); }
 .seen.known { background: #fff7ed; color: #c2410c; }
 .step2-detail { display: block; margin-top: .15rem; font-size: .8rem; }
+
+/* ---------- Applications: search by company or title ---------- */
+
+.app-search-bar { margin-bottom: .45rem; }
+.app-search-bar .filter-search { flex-basis: 380px; }
+.search-note { font-size: .82rem; }
+table.applications mark { background: #fef08a; color: inherit; padding: 0 .05rem; border-radius: 2px; }

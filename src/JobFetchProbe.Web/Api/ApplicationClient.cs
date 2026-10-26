@@ -38,7 +38,7 @@ public sealed class ApplicationClient(HttpClient http) : IApplicationClient
 
     public async Task<ApplicationPage> GetPageAsync(
         bool closed, ApplicationStage? stage, bool flagged, int page, int pageSize, ApplicationSort sort = ApplicationSort.FollowUp,
-        CancellationToken ct = default)
+        string? query = null, CancellationToken ct = default)
     {
         var path = $"{Route}?page={page}&pageSize={pageSize}";
         if (closed)
@@ -56,6 +56,10 @@ public sealed class ApplicationClient(HttpClient http) : IApplicationClient
         if (sort == ApplicationSort.Fit)
         {
             path += "&sort=Fit";
+        }
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            path += "&q=" + Uri.EscapeDataString(query.Trim());
         }
         using var response = await ApiCall.SendAsync(http, () => http.GetAsync(path, ct), ct);
         await EnsureSuccessAsync(response, ct);

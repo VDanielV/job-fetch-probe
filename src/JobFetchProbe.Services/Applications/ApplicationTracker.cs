@@ -2,6 +2,7 @@ using JobFetchProbe.Models.Applications;
 using JobFetchProbe.Services.Abstractions;
 using JobFetchProbe.Services.Abstractions.Applications;
 using JobFetchProbe.Services.Catalog;
+using JobFetchProbe.Services.Filter;
 
 namespace JobFetchProbe.Services.Applications;
 
@@ -58,7 +59,7 @@ public sealed class ApplicationTracker(IApplicationRepository applications, IJob
 
     public async Task<ApplicationPage> GetPageAsync(
         bool closed, ApplicationStage? stage, bool flagged, int page, int pageSize, ApplicationSort sort = ApplicationSort.FollowUp,
-        CancellationToken ct = default)
+        string? query = null, CancellationToken ct = default)
     {
         EnsureDatabase();
         var today = time.GetLocalNow();
@@ -70,8 +71,18 @@ public sealed class ApplicationTracker(IApplicationRepository applications, IJob
             .Select(s => new ApplicationStageCount(s, all.Count(a => a.Stage == s)))
             .ToList();
 
+        var search = TextFilter.Parse(query);
         IEnumerable<ApplicationSummary> listed;
-        if (closed)
+        if (!search.IsEmpty)
+        {
+            // A search looks everywhere: open ones in the usual order, then closed ones, most recently closed first.
+            var openFirst = open
+                .OrderBy(a => FlagOrder(a.Flag))
+                .ThenByDescending(a => a.AppliedAt)
+                .Concat(shut.OrderByDescending(a => a.StageChangedAt));
+            listed = openFirst.Where(a => TextFilter.Matches(search, a.Title, a.Company, searchDescription: true));
+        }
+        else if (closed)
         {
             // Most recently closed first.
             listed = shut.OrderByDescending(a => a.StageChangedAt);
@@ -83,11 +94,11 @@ public sealed class ApplicationTracker(IApplicationRepository applications, IJob
                 .OrderBy(a => FlagOrder(a.Flag))
                 .ThenByDescending(a => a.AppliedAt);
         }
-        if (stage is not null)
+        if (stage is not null && search.IsEmpty)
         {
             listed = listed.Where(a => a.Stage == stage.Value);
         }
-        if (flagged)
+        if (flagged && search.IsEmpty)
         {
             listed = listed.Where(a => a.Flag != FollowUpFlag.None);
         }
@@ -103,7 +114,12 @@ public sealed class ApplicationTracker(IApplicationRepository applications, IJob
         page = Math.Clamp(page, 1, pages);
         var items = list.Skip((page - 1) * pageSize).Take(pageSize).ToList();
         var flaggedCount = open.Count(a => a.Flag != FollowUpFlag.None);
-        return new ApplicationPage(items, page, pageSize, list.Count, open.Count, shut.Count, flaggedCount, stages);
+        if (search.IsEmpty)
+        {
+            return new ApplicationPage(items, page, pageSize, list.Count, open.Count, shut.Count, flaggedCount, stages);
+        }
+        return new ApplicationPage(items, page, pageSize, list.Count, open.Count, shut.Count, flaggedCount, stages,
+            query!.Trim(), search.Include);
     }
 
     public async Task<Application?> GetAsync(long jobId, CancellationToken ct = default)
